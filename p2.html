@@ -1,13 +1,31 @@
-<video id="cam" autoplay playsinline width="320" height="240"></video>
-<canvas id="frame" width="320" height="240" style="display:none;"></canvas>
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Deteksi Kamera & Kecerahan</title>
+    <style>
+        body { font-family: sans-serif; text-align: center; padding: 20px; background: #f4f4f4; }
+        video, canvas { width: 100%; max-width: 320px; height: auto; border: 2px solid #ccc; border-radius: 8px; background: #000; }
+        button { padding: 10px 15px; margin: 5px; font-size: 16px; cursor: pointer; border-radius: 5px; border: none; background: #007BFF; color: white; }
+        button:active { background: #0056b3; }
+        #hasil { font-weight: bold; margin-top: 15px; color: #333; font-size: 18px; }
+    </style>
+</head>
+<body>
 
-<div>
-    <button onclick="tanganiMulaiKamera()">Buka Kamera</button>
-    <button onclick="tanganiAmbilFrame()">Ambil Frame</button>
-    <button onclick="tanganiHitungKecerahan()">Rata Kecerahan</button>
-</div>
+    <h2>Uji Kamera & Kecerahan</h2>
+    
+    <video id="cam" autoplay playsinline muted></video>
+    <canvas id="frame" style="display:none;"></canvas>
 
-<p id="hasil">Kecerahan: -</p>
+    <div>
+        <button onclick="tanganiMulaiKamera()">1. Buka Kamera</button>
+        <button onclick="tanganiAmbilFrame()">2. Ambil Frame</button>
+        <button onclick="tanganiHitungKecerahan()">3. Hitung Kecerahan</button>
+    </div>
+
+    <p id="hasil">Status: Menunggu izin kamera...</p>
 
 <script>
 let videoElem = document.getElementById('cam');
@@ -15,137 +33,91 @@ let canvasElem = document.getElementById('frame');
 let lastImageData = null;
 let cameraStream = null;
 
-
-// ==================================================
-// 1. MEMBUKA KAMERA DAN MEMINTA IZIN
-// ==================================================
 async function mulaiKamera() {
+    let statusText = document.getElementById('hasil');
+    
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        alert("Browser HP Anda tidak mendukung akses kamera.");
+        statusText.innerText = "Error: Browser tidak mendukung kamera.";
+        return null;
+    }
+
     try {
+        statusText.innerText = "Meminta izin kamera...";
+        
         cameraStream = await navigator.mediaDevices.getUserMedia({
-            video: true,
+            video: { facingMode: "user" },
             audio: false
         });
 
         videoElem.srcObject = cameraStream;
         await videoElem.play();
+        
+        statusText.innerText = "Kamera aktif! Silakan ambil frame.";
         return videoElem;
 
     } catch (error) {
         console.error("Gagal mengakses kamera:", error);
-
-        if (error.name === "NotAllowedError") {
-            alert("Izin kamera ditolak. Silakan izinkan akses kamera pada browser.");
-        } 
-        else if (error.name === "NotFoundError") {
-            alert("Kamera tidak ditemukan.");
-        } 
-        else {
-            alert("Tidak dapat membuka kamera: " + error.message);
-        }
-
+        let pesanError = "Gagal membuka kamera: " + error.message;
+        alert(pesanError);
+        statusText.innerText = pesanError;
         return null;
     }
 }
 
-
-// ==================================================
-// 2. HANDLER TOMBOL BUKA KAMERA
-// ==================================================
 async function tanganiMulaiKamera() {
-    const video = await mulaiKamera();
-
-    if (video) {
-        document.getElementById('hasil').innerText =
-            "Kamera aktif. Silakan ambil frame.";
+    if (cameraStream) {
+        cameraStream.getTracks().forEach(track => track.stop());
     }
+    await mulaiKamera();
 }
 
-
-// ==================================================
-// 3. MENGAMBIL FRAME DARI KAMERA
-// ==================================================
 function ambilFrame(video, canvas) {
-    const ctx = canvas.getContext('2d');
-
-    // DIPERBAIKI: Menggunakan operator logika/nilai default yang benar (||)
+    let ctx = canvas.getContext('2d');
     canvas.width = video.videoWidth || 320;
     canvas.height = video.videoHeight || 240;
 
-    ctx.drawImage(
-        video,
-        0,
-        0,
-        canvas.width,
-        canvas.height
-    );
-
-    return ctx.getImageData(
-        0,
-        0,
-        canvas.width,
-        canvas.height
-    );
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    return ctx.getImageData(0, 0, canvas.width, canvas.height);
 }
 
-
-// ==================================================
-// 4. HANDLER TOMBOL AMBIL FRAME
-// ==================================================
 function tanganiAmbilFrame() {
     if (!cameraStream) {
-        alert("Silakan buka kamera terlebih dahulu.");
+        alert("Silakan klik 'Buka Kamera' terlebih dahulu!");
         return;
     }
 
-    lastImageData = ambilFrame(
-        videoElem,
-        canvasElem
-    );
-
-    document.getElementById('hasil').innerText =
-        "Frame berhasil diambil.";
+    lastImageData = ambilFrame(videoElem, canvasElem);
+    document.getElementById('hasil').innerText = "Frame berhasil diambil. Silakan hitung kecerahan.";
 }
 
-
-// ==================================================
-// 5. MENGHITUNG RATA-RATA KECERAHAN
-// ==================================================
 function rataKecerahan(imageData) {
-    const d = imageData.data;
+    let d = imageData.data;
     let total = 0;
-
     for (let i = 0; i < d.length; i += 4) {
-        total += (
-            d[i] +
-            d[i + 1] +
-            d[i + 2]
-        ) / 3;
+        let r = d[i];
+        let g = d[i + 1];
+        let b = d[i + 2];
+        total += (r + g + b) / 3;
     }
-
-    const jumlahPixel = d.length / 4;
-    return total / jumlahPixel;
+    return total / (d.length / 4);
 }
 
-
-// ==================================================
-// 6. HANDLER TOMBOL RATA KECERAHAN
-// ==================================================
 function tanganiHitungKecerahan() {
     if (!lastImageData) {
         if (!cameraStream) {
             alert("Silakan buka kamera terlebih dahulu.");
             return;
         }
-
-        lastImageData = ambilFrame(
-            videoElem,
-            canvasElem
-        );
+        lastImageData = ambilFrame(videoElem, canvasElem);
     }
 
-    const kecerahan = rataKecerahan(lastImageData);
-
-    // DIPERBAIKI: Menggunakan template literal backtick (``) yang benar
-    document.getElementById('hasil').innerText = `Kecerahan: \${kecerahan.toFixed(2)}`;
+    let nilaiKecerahan = rataKecerahan(lastImageData);
+    
+    // Menampilkan hasil dengan string standar agar aman dari error teks kode
+    document.getElementById('hasil').innerText = "Kecerahan: " + nilaiKecerahan.toFixed(2);
 }
 </script>
+
+</body>
+</html>
