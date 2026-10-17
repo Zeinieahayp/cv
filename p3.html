@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aplikasi Kamera & Pemrosesan Real-Time</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: sans-serif;
+        }
+        body {
+            background: #121212;
+            color: #e0e0e0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            min-height: 100vh;
+        }
+        h2 {
+            margin-bottom: 15px;
+            color: #ffffff;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            width: 100%;
+            max-width: 640px;
+            background: #1e1e1e;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.5);
+        }
+        .view-area {
+            position: relative;
+            width: 100%;
+            background: #000;
+            border-radius: 8px;
+            overflow: hidden;
+            aspect-ratio: 4/3;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        video, canvas {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+        video {
+            display: none; /* Sembunyikan video mentah, tampilkan hasil canvas */
+        }
+        .controls {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        label {
+            font-size: 0.9rem;
+            color: #b0b0b0;
+        }
+        select, input[type="range"] {
+            width: 100%;
+            padding: 8px;
+            background: #2d2d2d;
+            border: 1px solid #444;
+            color: #fff;
+            border-radius: 6px;
+            outline: none;
+        }
+        .btn-group {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+        }
+        button {
+            padding: 10px;
+            background: #333;
+            border: 1px solid #555;
+            color: #fff;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background 0.2s;
+        }
+        button:hover {
+            background: #444;
+        }
+        button.active {
+            background: #0066cc;
+            border-color: #0088ff;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h2>Live Camera Video Processor</h2>
+        
+        <div class="view-area">
+            <video id="webcam" autoplay playsinline></video>
+            <canvas id="outputCanvas"></canvas>
+        </div>
+
+        <div class="controls">
+            <!-- Filter Pemrosesan -->
+            <div class="control-group">
+                <label>Filter Efek:</label>
+                <div class="btn-group">
+                    <button class="filter-btn active" data-filter="normal">Normal</button>
+                    <button class="filter-btn" data-filter="grayscale">Grayscale</button>
+                    <button class="filter-btn" data-filter="bw">Black & White</button>
+                    <button class="filter-btn" data-filter="bokeh">Bokeh (Blur)</button>
+                </div>
+            </div>
+
+            <!-- Transformasi Geometrik -->
+            <div class="control-group">
+                <label>Transformasi Geometrik:</label>
+                <div class="btn-group">
+                    <button id="btnMirror">Mirror: Off</button>
+                    <button id="btnRotate">Rotasi: 0°</button>
+                    <button id="btnResetGeo">Reset Geo</button>
+                </div>
+            </div>
+
+            <!-- Pengaturan Zoom -->
+            <div class="control-group">
+                <label>Zoom (<span id="zoomVal">1.0</span>x):</label>
+                <input type="range" id="zoomRange" min="1" max="3" step="0.1" value="1">
+            </div>
+
+            <!-- Resize Resolusi Kamera -->
+            <div class="control-group">
+                <label for="resolutionSelect">Resolusi Kamera (Resize):</label>
+                <select id="resolutionSelect">
+                    <option value="qvga">QVGA (320x240)</option>
+                    <option value="vga" selected>VGA (640x480)</option>
+                    <option value="hd">HD (1280x720)</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const video = document.getElementById('webcam');
+        const canvas = document.getElementById('outputCanvas');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+        const filterBtns = document.querySelectorAll('.filter-btn');
+        const btnMirror = document.getElementById('btnMirror');
+        const btnRotate = document.getElementById('btnRotate');
+        const btnResetGeo = document.getElementById('btnResetGeo');
+        const zoomRange = document.getElementById('zoomRange');
+        const zoomVal = document.getElementById('zoomVal');
+        const resolutionSelect = document.getElementById('resolutionSelect');
+
+        let currentFilter = 'normal';
+        let isMirror = false;
+        let rotationAngle = 0; // 0, 90, 180, 270
+        let zoomLevel = 1.0;
+
+        // Resolusi mapping
+        const resolutions = {
+            qvga: { width: 320, height: 240 },
+            vga: { width: 640, height: 480 },
+            hd: { width: 1280, height: 720 }
+        };
+
+        // Inisialisasi Kamera
+        async function startCamera(resKey = 'vga') {
+            try {
+                if (video.srcObject) {
+                    video.srcObject.getTracks().forEach(track => track.stop());
+                }
+                const constraints = {
+                    video: {
+                        width: { ideal: resolutions[resKey].width },
+                        height: { ideal: resolutions[resKey].height }
+                    },
+                    audio: false
+                };
+                const stream = await navigator.mediaDevices.getUserMedia(constraints);
+                video.srcObject = stream;
+                await video.play();
+                
+                canvas.width = video.videoWidth || resolutions[resKey].width;
+                canvas.height = video.videoHeight || resolutions[resKey].height;
+            } catch (err) {
+                alert("Gagal mengakses kamera: " + err.message);
+            }
+        }
+
+        // Event listener untuk pilihan filter
+        filterBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                filterBtns.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                currentFilter = btn.getAttribute('data-filter');
+            });
+        });
+
+        // Kontrol Geometrik
+        btnMirror.addEventListener('click', () => {
+            isMirror = !isMirror;
+            btnMirror.textContent = `Mirror: ${isMirror ? 'On' : 'Off'}`;
+            btnMirror.classList.toggle('active', isMirror);
+        });
+
+        btnRotate.addEventListener('click', () => {
+            rotationAngle = (rotationAngle + 90) % 360;
+            btnRotate.textContent = `Rotasi: ${rotationAngle}°`;
+            btnRotate.classList.toggle('active', rotationAngle > 0);
+        });
+
+        btnResetGeo.addEventListener('click', () => {
+            isMirror = false;
+            rotationAngle = 0;
+            zoomLevel = 1.0;
+            zoomRange.value = 1.0;
+            zoomVal.textContent = '1.0';
+            btnMirror.textContent = 'Mirror: Off';
+            btnMirror.classList.remove('active');
+            btnRotate.textContent = 'Rotasi: 0°';
+            btnRotate.classList.remove('active');
+        });
+
+        zoomRange.addEventListener('input', (e) => {
+            zoomLevel = parseFloat(e.target.value);
+            zoomVal.textContent = zoomLevel.toFixed(1);
+        });
+
+        resolutionSelect.addEventListener('change', (e) => {
+            startCamera(e.target.value);
+        });
+
+        // Simulasi Efek Bokeh Sederhana (Box Blur Area Pinggir)
+        function applyBokeh(pixels, width, height) {
+            // Untuk menjaga performa real-time JS, kita buat efek vinyet/blur pinggiran secara sederhana 
+            // dengan mencampur piksel tetangga di luar area tengah (fokus center).
+            const d = pixels.data;
+            const cx = width / 2;
+            const cy = height / 2;
+            const maxRadius = Math.min(cx, cy) * 0.7;
+
+            // Simple vignette + blur approximation loop
+            for (let y = 0; y < height; y += 2) {
+                for (let x = 0; x < width; x += 2) {
+                    let dist = Math.sqrt(Math.pow(x - cx, 2) + Math.pow(y - cy, 2));
+                    if (dist > maxRadius) {
+                        let idx = (y * width + x) * 4;
+                        // Ambil rata-rata piksel sekitar (efek blur sederhana)
+                        let rSum = 0, gSum = 0, bSum = 0, count = 0;
+                        for (let dy = -2; dy <= 2; dy += 2) {
+                            for (let dx = -2; dx <= 2; dx += 2) {
+                                let nx = x + dx, ny = y + dy;
+                                if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+                                    let nIdx = (ny * width + nx) * 4;
+                                    rSum += d[nIdx];
+                                    gSum += d[nIdx + 1];
+                                    bSum += d[nIdx + 2];
+                                    count++;
+                                }
+                            }
+                        }
+                        d[idx] = rSum / count;
+                        d[idx+1] = gSum / count;
+                        d[idx+2] = bSum / count;
+                    }
+                }
+            }
+        }
+
+        // Loop Pemrosesan Frame Real-Time
+        function processFrame() {
+            if (video.readyState === video.HAVE_ENOUGH_DATA) {
+                // Sesuaikan ukuran canvas jika berubah
+                if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                }
+
+                ctx.save();
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                // --- 1. Transformasi Geometrik (Translate, Rotate, Scale/Zoom, Mirror) ---
+                ctx.translate(canvas.width / 2, canvas.height / 2);
+                
+                if (rotationAngle !== 0) {
+                    ctx.rotate((rotationAngle * Math.PI) / 180);
+                }
+                if (isMirror) {
+                    ctx.scale(-1, 1);
+                }
+                if (zoomLevel !== 1.0) {
+                    ctx.scale(zoomLevel, zoomLevel);
+                }
+
+                // Gambar video ke tengah canvas
+                ctx.drawImage(video, -canvas.width / 2, -canvas.height / 2, canvas.width, canvas.height);
+                ctx.restore();
+
+                // --- 2. Pemrosesan Filter Pixel-Level ---
+                if (currentFilter !== 'normal') {
+                    let frame = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                    let data = frame.data;
+
+                    if (currentFilter === 'grayscale') {
+                        for (let i = 0; i < data.length; i += 4) {
+                            let avg = 0.3 * data[i] + 0.59 * data[i + 1] + 0.11 * data[i + 2];
+                            data[i] = avg;     // R
+                            data[i + 1] = avg; // G
+                            data[i + 2] = avg; // B
+                        }
+                    } else if (currentFilter === 'bw') {
+                        for (let i = 0; i < data.length; i += 4) {
+                            let avg = 0.3 * data[i] + 0.59 * data[i + 1] + 0.11 * data[i + 2];
+                            let bw = avg >= 128 ? 255 : 0;
+                            data[i] = bw;
+                            data[i + 1] = bw;
+                            data[i + 2] = bw;
+                        }
+                    } else if (currentFilter === 'bokeh') {
+                        applyBokeh(frame, canvas.width, canvas.height);
+                    }
+
+                    ctx.putImageData(frame, 0, 0);
+                }
+            }
+            requestAnimationFrame(processFrame);
+        }
+
+        // Mulai aplikasi
+        startCamera('vga').then(() => {
+            requestAnimationFrame(processFrame);
+        });
+    </script>
+</body>
+</html>
