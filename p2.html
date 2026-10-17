@@ -1,5 +1,5 @@
 <video id="cam" autoplay playsinline width="320" height="240"></video>
-<canvas id="frame" width="320" height="240"></canvas>
+<canvas id="frame" width="320" height="240" style="display:none;"></canvas>
 
 <div>
     <button onclick="tanganiMulaiKamera()">Buka Kamera</button>
@@ -20,24 +20,17 @@ let cameraStream = null;
 // 1. MEMBUKA KAMERA DAN MEMINTA IZIN
 // ==================================================
 async function mulaiKamera() {
-
     try {
-
-        // Bagian ini yang meminta izin akses kamera
         cameraStream = await navigator.mediaDevices.getUserMedia({
             video: true,
             audio: false
         });
 
-        // Menampilkan kamera ke elemen <video>
         videoElem.srcObject = cameraStream;
-
         await videoElem.play();
-
         return videoElem;
 
     } catch (error) {
-
         console.error("Gagal mengakses kamera:", error);
 
         if (error.name === "NotAllowedError") {
@@ -59,7 +52,6 @@ async function mulaiKamera() {
 // 2. HANDLER TOMBOL BUKA KAMERA
 // ==================================================
 async function tanganiMulaiKamera() {
-
     const video = await mulaiKamera();
 
     if (video) {
@@ -73,14 +65,12 @@ async function tanganiMulaiKamera() {
 // 3. MENGAMBIL FRAME DARI KAMERA
 // ==================================================
 function ambilFrame(video, canvas) {
-
     const ctx = canvas.getContext('2d');
 
-    // Mengikuti ukuran video kamera
-    canvas.width = video.videoWidth  320;
-    canvas.height = video.videoHeight  240;
+    // DIPERBAIKI: Menggunakan operator logika/nilai default yang benar (||)
+    canvas.width = video.videoWidth || 320;
+    canvas.height = video.videoHeight || 240;
 
-    // Mengambil gambar dari video
     ctx.drawImage(
         video,
         0,
@@ -89,7 +79,6 @@ function ambilFrame(video, canvas) {
         canvas.height
     );
 
-    // Mengambil data pixel
     return ctx.getImageData(
         0,
         0,
@@ -103,8 +92,6 @@ function ambilFrame(video, canvas) {
 // 4. HANDLER TOMBOL AMBIL FRAME
 // ==================================================
 function tanganiAmbilFrame() {
-
-    // Pastikan kamera sudah aktif
     if (!cameraStream) {
         alert("Silakan buka kamera terlebih dahulu.");
         return;
@@ -124,19 +111,10 @@ function tanganiAmbilFrame() {
 // 5. MENGHITUNG RATA-RATA KECERAHAN
 // ==================================================
 function rataKecerahan(imageData) {
-
     const d = imageData.data;
-
     let total = 0;
 
-    // Setiap pixel memiliki:
-    // R = d[i]
-    // G = d[i+1]
-    // B = d[i+2]
-    // A = d[i+3]
-
     for (let i = 0; i < d.length; i += 4) {
-
         total += (
             d[i] +
             d[i + 1] +
@@ -144,9 +122,7 @@ function rataKecerahan(imageData) {
         ) / 3;
     }
 
-    // Jumlah pixel
     const jumlahPixel = d.length / 4;
-
     return total / jumlahPixel;
 }
 
@@ -155,10 +131,7 @@ function rataKecerahan(imageData) {
 // 6. HANDLER TOMBOL RATA KECERAHAN
 // ==================================================
 function tanganiHitungKecerahan() {
-
-    // Jika belum ada frame, ambil langsung dari kamera
     if (!lastImageData) {
-
         if (!cameraStream) {
             alert("Silakan buka kamera terlebih dahulu.");
             return;
@@ -169,13 +142,10 @@ function tanganiHitungKecerahan() {
             canvasElem
         );
     }
-// Hitung kecerahan
-    const kecerahan = rataKecerahan(
-        lastImageData
-    );
 
-    // Tampilkan hasil
-    document.getElementById('hasil').innerText =
-        Kecerahan: ${kecerahan.toFixed(2)};
+    const kecerahan = rataKecerahan(lastImageData);
+
+    // DIPERBAIKI: Menggunakan template literal backtick (``) yang benar
+    document.getElementById('hasil').innerText = `Kecerahan: \${kecerahan.toFixed(2)}`;
 }
 </script>
