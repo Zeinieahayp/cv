@@ -1,0 +1,424 @@
+
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Deteksi Kamera & Pengolahan Citra</title>
+
+    <!-- OpenCV.js untuk pengolahan citra -->
+    <script async src="https://docs.opencv.org/4.x/opencv.js"></script>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: sans-serif;
+            text-align: center;
+            padding: 20px;
+            margin: 0;
+            min-height: 100vh;
+            background: linear-gradient(135deg, #dbeafe, #ede9fe, #fce7f3);
+            color: #1e293b;
+        }
+
+        h2 {
+            color: #312e81;
+        }
+
+        .container {
+            max-width: 850px;
+            margin: auto;
+            padding: 20px;
+            border: 2px solid #a5b4fc;
+            border-radius: 18px;
+            background: rgba(255, 255, 255, 0.85);
+            box-shadow: 0 8px 25px rgba(49, 46, 129, 0.15);
+        }
+
+        .hasil-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .panel {
+            padding: 12px;
+            border: 2px solid #c7d2fe;
+            border-radius: 12px;
+            background: linear-gradient(145deg, #ffffff, #eef2ff);
+        }
+
+        .panel h3 {
+            font-size: 16px;
+            color: #4338ca;
+        }
+
+        video, canvas {
+            width: 100%;
+            max-width: 320px;
+            height: auto;
+            border: 3px solid #818cf8;
+            border-radius: 10px;
+            background: #111827;
+        }
+
+        button {
+            padding: 11px 15px;
+            margin: 5px;
+            font-size: 14px;
+            cursor: pointer;
+            border: 1px solid #6366f1;
+            border-radius: 8px;
+            color: white;
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            transition: 0.2s;
+        }
+
+        button:hover {
+            background: linear-gradient(135deg, #4338ca, #7c3aed);
+        }
+
+        button:active {
+            transform: scale(0.97);
+        }
+
+        #hasil {
+            font-weight: bold;
+            margin-top: 18px;
+            padding: 12px;
+            border: 1px solid #a5b4fc;
+            border-radius: 8px;
+            background: linear-gradient(90deg, #eef2ff, #f5f3ff);
+            overflow-wrap: anywhere;
+        }
+
+        .keterangan {
+            font-size: 13px;
+            color: #475569;
+        }
+    </style>
+</head>
+
+<body>
+<div class="container">
+
+    <h2>Uji Kamera & Pengolahan Citra</h2>
+
+    <p class="keterangan">
+        Kamera, deteksi tepi, gradient, morfologi, dan pengurangan noise.
+    </p>
+
+    <div class="panel">
+        <h3>Gambar Kamera</h3>
+        <video id="cam" autoplay playsinline muted></video>
+    </div>
+
+    <canvas id="frame" style="display:none;"></canvas>
+
+    <div>
+        <button onclick="tanganiMulaiKamera()">
+            1. Buka Kamera
+        </button>
+
+        <button onclick="tanganiAmbilFrame()">
+            2. Ambil Frame
+        </button>
+
+        <button onclick="tanganiProsesCitra()">
+            3. Proses Citra
+        </button>
+
+        <button onclick="tanganiStopKamera()">
+            Matikan Kamera
+        </button>
+    </div>
+
+    <div class="hasil-grid">
+
+        <div class="panel">
+            <h3>1. Gambar Asli</h3>
+            <canvas id="asli"></canvas>
+        </div>
+
+        <div class="panel">
+            <h3>2. Border (Canny)</h3>
+            <canvas id="border"></canvas>
+        </div>
+
+        <div class="panel">
+            <h3>3. Gradient (Sobel)</h3>
+            <canvas id="gradient"></canvas>
+        </div>
+
+        <div class="panel">
+            <h3>4. Morfologi</h3>
+            <canvas id="morfologi"></canvas>
+        </div>
+
+        <div class="panel">
+            <h3>5. Pengurangan Noise</h3>
+            <canvas id="noise"></canvas>
+        </div>
+
+    </div>
+
+    <p id="hasil">Status: Menunggu izin kamera...</p>
+
+</div>
+
+<script>
+let videoElem = document.getElementById("cam");
+let canvasElem = document.getElementById("frame");
+let lastImageData = null;
+let cameraStream = null;
+let cvSiap = false;
+
+// Menunggu OpenCV.js siap digunakan
+var cv = null;
+
+function periksaOpenCV() {
+    if (typeof cv !== "undefined" && cv.Mat) {
+        cvSiap = true;
+        return true;
+    }
+    return false;
+}
+
+async function mulaiKamera() {
+    let statusText = document.getElementById("hasil");
+
+    if (!navigator.mediaDevices ||
+        !navigator.mediaDevices.getUserMedia) {
+        statusText.innerText =
+            "Error: Browser tidak mendukung kamera.";
+        return;
+    }
+
+    try {
+        statusText.innerText = "Meminta izin kamera...";
+
+        cameraStream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: "user" },
+            audio: false
+        });
+
+        videoElem.srcObject = cameraStream;
+        await videoElem.play();
+
+        statusText.innerText =
+            "Kamera aktif. Silakan ambil frame.";
+
+    } catch (error) {
+        statusText.innerText =
+            "Gagal membuka kamera: " + error.message;
+    }
+}
+
+async function tanganiMulaiKamera() {
+    if (cameraStream) {
+        cameraStream.getTracks().forEach(track => track.stop());
+    }
+
+    cameraStream = null;
+    lastImageData = null;
+
+    await mulaiKamera();
+}
+
+function tanganiStopKamera() {
+    if (cameraStream) {
+        cameraStream.getTracks().forEach(track => track.stop());
+        cameraStream = null;
+    }
+
+    videoElem.srcObject = null;
+    document.getElementById("hasil").innerText =
+        "Kamera telah dimatikan.";
+}
+
+function ambilFrame(video, canvas) {
+    let ctx = canvas.getContext("2d");
+
+    canvas.width = video.videoWidth || 320;
+    canvas.height = video.videoHeight || 240;
+
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    return ctx.getImageData(
+        0, 0, canvas.width, canvas.height
+    );
+}
+
+function tanganiAmbilFrame() {
+    if (!cameraStream || videoElem.readyState < 2) {
+        alert("Buka kamera dan tunggu sampai gambar muncul.");
+        return;
+    }
+
+    lastImageData = ambilFrame(videoElem, canvasElem);
+
+    tampilkanImageData("asli", lastImageData);
+
+    document.getElementById("hasil").innerText =
+        "Frame berhasil diambil. Klik Proses Citra.";
+}
+
+function tampilkanImageData(id, imageData) {
+    let canvas = document.getElementById(id);
+    canvas.width = imageData.width;
+    canvas.height = imageData.height;
+
+    canvas.getContext("2d").putImageData(imageData, 0, 0);
+}
+
+function rataKecerahan(imageData) {
+    let d = imageData.data;
+    let total = 0;
+
+    for (let i = 0; i < d.length; i += 4) {
+        total += (d[i] + d[i + 1] + d[i + 2]) / 3;
+    }
+
+    return total / (d.length / 4);
+}
+
+function tanganiProsesCitra() {
+    if (!lastImageData) {
+        if (!cameraStream || videoElem.readyState < 2) {
+            alert("Buka kamera terlebih dahulu.");
+            return;
+        }
+
+        lastImageData = ambilFrame(videoElem, canvasElem);
+        tampilkanImageData("asli", lastImageData);
+    }
+
+    if (!periksaOpenCV()) {
+        document.getElementById("hasil").innerText =
+            "OpenCV.js belum siap. Periksa koneksi internet " +
+            "dan tunggu beberapa detik, lalu coba lagi.";
+        return;
+    }
+
+    let src = null;
+    let gray = null;
+    let blurred = null;
+    let edges = null;
+    let gradX = null;
+    let gradY = null;
+    let absX = null;
+    let absY = null;
+    let grad = null;
+    let binary = null;
+    let morph = null;
+    let kernel = null;
+
+    try {
+        // Mengubah frame kamera menjadi matriks OpenCV
+        src = cv.matFromImageData(lastImageData);
+
+        // Mengubah gambar menjadi grayscale
+        gray = new cv.Mat();
+        cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+
+        // 1. NOISE REDUCTION: Gaussian Blur
+        blurred = new cv.Mat();
+        cv.GaussianBlur(
+            gray,
+            blurred,
+            new cv.Size(5, 5),
+            0,
+            0,
+            cv.BORDER_DEFAULT
+        );
+
+        // Menampilkan gambar setelah noise dikurangi
+        cv.imshow("noise", blurred);
+
+        // 2. BORDER DETECTION: Canny
+        edges = new cv.Mat();
+        cv.Canny(blurred, edges, 50, 150);
+        cv.imshow("border", edges);
+
+        // 3. GRADIENT: Sobel arah X dan Y
+        gradX = new cv.Mat();
+        gradY = new cv.Mat();
+        absX = new cv.Mat();
+        absY = new cv.Mat();
+        grad = new cv.Mat();
+
+        cv.Sobel(
+            blurred, gradX, cv.CV_16S, 1, 0, 3
+        );
+
+        cv.Sobel(
+            blurred, gradY, cv.CV_16S, 0, 1, 3
+        );
+
+        cv.convertScaleAbs(gradX, absX);
+        cv.convertScaleAbs(gradY, absY);
+
+        cv.addWeighted(
+            absX, 0.5, absY, 0.5, 0, grad
+        );
+
+        cv.imshow("gradient", grad);
+
+        // 4. MORFOLOGI: Erosi dan Dilasi
+        binary = new cv.Mat();
+        morph = new cv.Mat();
+        kernel = cv.Mat.ones(3, 3, cv.CV_8U);
+
+        // Membuat citra biner berdasarkan ambang
+        cv.threshold(
+            blurred, binary, 127, 255, cv.THRESH_BINARY
+        );
+
+        // Erosi mengikis area putih kecil
+        cv.erode(
+            binary, morph, kernel,
+            new cv.Point(-1, -1), 1
+        );
+
+        // Dilasi memperbesar area putih
+        cv.dilate(
+            morph, morph, kernel,
+            new cv.Point(-1, -1), 1
+        );
+
+        cv.imshow("morfologi", morph);
+
+        // Menampilkan gambar asli
+        tampilkanImageData("asli", lastImageData);
+
+        // Menghitung rata-rata kecerahan
+        let kecerahan = rataKecerahan(lastImageData);
+
+        document.getElementById("hasil").innerText =
+            "Proses berhasil! | Kecerahan rata-rata: " +
+            kecerahan.toFixed(2) + " / 255";
+
+    } catch (error) {
+        console.error(error);
+        document.getElementById("hasil").innerText =
+            "Terjadi kesalahan saat memproses citra: " +
+            error.message;
+
+    } finally {
+        // Membersihkan memori objek OpenCV
+        [
+            src, gray, blurred, edges, gradX, gradY,
+            absX, absY, grad, binary, morph, kernel
+        ].forEach(mat => {
+            if (mat) mat.delete();
+        });
+    }
+}
+</script>
+
+</body>
+</html>
