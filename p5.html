@@ -1,832 +1,1054 @@
 <!DOCTYPE html>
-<html lang="id" class="h-full bg-slate-950 text-slate-100">
+<html lang="id">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>IP241-CV-P9: Pencocokan Wajah Berbasis Momen Hu & LBP</title>
+    <title>Sistem Verifikasi Wajah - LBP, Histogram RGB & Momen Hu</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Google Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
-    <!-- FontAwesome Icons -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- OpenCV.js CDN -->
-    <script async src="https://docs.opencv.org/4.8.0/opencv.js" onload="onOpenCvReady();" type="text/javascript"></script>
-
+    <!-- Google Fonts: Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        body { font-family: 'Inter', sans-serif; }
-        .font-mono { font-family: 'JetBrains Mono', monospace; }
-        ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-track { background: #0f172a; }
-        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
-        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: #f4f6f9;
+            color: #1e293b;
+        }
+
+        /* Custom Range Slider Styling */
+        input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            background: transparent;
+            cursor: pointer;
+        }
+
+        input[type="range"]::-webkit-slider-runnable-track {
+            background: #cbd5e1;
+            height: 6px;
+            border-radius: 999px;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            margin-top: -5px;
+            background-color: #2563eb;
+            height: 16px;
+            width: 16px;
+            border-radius: 50%;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+            transition: transform 0.15s ease, background-color 0.15s ease;
+        }
+
+        input[type="range"]::-webkit-slider-thumb:hover {
+            transform: scale(1.15);
+            background-color: #1d4ed8;
+        }
+
+        /* Crisp pixelated rendering for LBP visualization strip */
+        .lbp-canvas {
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+        }
+
+        /* Custom scrollbar for responsive table */
+        .table-container::-webkit-scrollbar {
+            height: 6px;
+        }
+        .table-container::-webkit-scrollbar-track {
+            background: #f1f5f9;
+            border-radius: 4px;
+        }
+        .table-container::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
     </style>
 </head>
-<body class="min-h-screen flex flex-col">
+<body class="min-h-screen py-6 px-4 sm:px-6 lg:px-8">
 
-    <!-- Header -->
-    <header class="bg-slate-900/90 backdrop-blur border-b border-slate-800 sticky top-0 z-40">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-            <div class="flex items-center gap-3">
-                <div class="w-10 h-10 rounded-xl bg-indigo-600/20 border border-indigo-500/40 flex items-center justify-center text-indigo-400">
-                    <i class="fa-solid fa-expand text-lg"></i>
-                </div>
-                <div>
-                    <div class="flex items-center gap-2">
-                        <span class="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 rounded">IP241-CV-P9</span>
-                        <h1 class="font-bold text-base sm:text-lg text-white leading-tight">Pencocokan Wajah Momen Hu</h1>
-                    </div>
-                    <p class="text-xs text-slate-400 hidden sm:block">Praktikum Invariansi Hu Moments, ROI Wajah & Local Binary Pattern (LBP)</p>
-                </div>
-            </div>
+    <div class="max-w-5xl mx-auto space-y-5">
+        
+        <!-- Header Judul Aplikasi -->
+        <header class="text-center mb-2">
+            <h1 class="text-xl sm:text-2xl font-bold text-slate-800 tracking-tight">
+                Sistem Verifikasi Wajah (Face Matching)
+            </h1>
+            <p class="text-xs sm:text-sm text-slate-500 mt-1">
+                Ekstraksi Fitur Tekstur (LBP), Histogram Warna (RGB 192-dim), &amp; Momen Invarian Hu
+            </p>
+        </header>
 
-            <!-- Status OpenCV -->
-            <div id="cvStatusBox" class="flex items-center gap-2 bg-slate-950 px-3 py-1.5 rounded-full border border-slate-800 text-xs">
-                <span id="cvDot" class="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse"></span>
-                <span id="cvStatusText" class="text-slate-300 font-medium">Memuat OpenCV.js...</span>
-            </div>
+        <!-- Notifikasi Toast / Message Box (Pengganti alert) -->
+        <div id="messageBox" class="hidden rounded-xl p-3.5 text-sm font-medium border shadow-sm transition-all duration-300 flex items-center justify-between">
+            <span id="messageText"></span>
+            <button onclick="hideMessage()" class="ml-4 text-xs underline opacity-80 hover:opacity-100">Tutup</button>
         </div>
-    </header>
 
-    <!-- Main Workspace -->
-    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
-
-        <!-- Top Control Bar: Extraction Mode & Threshold -->
-        <section class="grid grid-cols-1 lg:grid-cols-12 gap-6">
-
-            <!-- Mode Ekstraksi Fitur (Tantangan Optimasi) -->
-            <div class="lg:col-span-7 bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg">
-                <div class="flex items-center justify-between mb-3">
-                    <h2 class="text-sm font-bold text-white flex items-center gap-2">
-                        <i class="fa-solid fa-wand-magic-sparkles text-indigo-400"></i>
-                        Metode Ekstraksi Fitur & Optimasi
+        <!-- Grid Dua Kolom Utama: Objek A & Objek B -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+            
+            <!-- KOLOM KIRI: Wajah Referensi (Objek A) -->
+            <section class="bg-white rounded-xl shadow-sm border border-slate-200/80 p-5 flex flex-col justify-between">
+                <div>
+                    <h2 class="text-center font-bold text-slate-800 text-base mb-3">
+                        Wajah Referensi (Objek A)
                     </h2>
-                    <span class="text-[11px] text-emerald-400 bg-emerald-950/60 border border-emerald-800/60 px-2.5 py-0.5 rounded-full">
-                        Poin 5: Tantangan Nilai Tambah
+
+                    <!-- Input File Bar -->
+                    <div class="flex items-center justify-center gap-2.5 mb-4 flex-wrap">
+                        <label for="fileInputA" class="cursor-pointer bg-blue-50 hover:bg-blue-100 text-blue-600 font-semibold text-xs px-3.5 py-2 rounded-lg border border-blue-200/60 transition-colors select-none">
+                            Choose File
+                        </label>
+                        <input type="file" id="fileInputA" accept="image/*" class="hidden" onchange="handleImageUpload(event, 'A')">
+                        <span id="fileNameA" class="text-xs text-slate-500 truncate max-w-[200px] sm:max-w-[230px]" title="sample_referensi_A.png">
+                            sample_referensi_A.png
+                        </span>
+                    </div>
+
+                    <!-- Area Preview Foto Wajah A + Overlay ROI -->
+                    <div class="flex justify-center mb-4">
+                        <div class="relative w-52 h-56 sm:w-56 sm:h-60 bg-slate-100 rounded-lg overflow-hidden border border-slate-200 shadow-inner flex items-center justify-center group">
+                            <img id="previewImgA" alt="Preview Objek A" class="w-full h-full object-cover" />
+                            <!-- Canvas overlay opsional untuk kotak ROI -->
+                            <canvas id="overlayCanvasA" class="absolute inset-0 w-full h-full pointer-events-none"></canvas>
+                            <span class="absolute bottom-1.5 right-1.5 bg-slate-900/65 text-white text-[10px] px-1.5 py-0.5 rounded backdrop-blur-xs">
+                                ROI Auto-Detect
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Visualisasi LBP Objek A -->
+                <div class="mt-2 pt-2 border-t border-slate-100">
+                    <div class="flex items-center justify-between mb-1.5">
+                        <label class="text-xs font-semibold text-slate-700">
+                            ROI &amp; Visualisasi LBP Objek A:
+                        </label>
+                        <span id="roiDimA" class="text-[11px] text-slate-400 font-mono">128×128 px</span>
+                    </div>
+                    <div class="w-full h-11 bg-slate-900 rounded-md overflow-hidden border border-slate-300 shadow-inner">
+                        <canvas id="lbpCanvasA" class="w-full h-full block lbp-canvas"></canvas>
+                    </div>
+                </div>
+            </section>
+
+            <!-- KOLOM KANAN: Wajah Uji (Objek B) -->
+            <section class="bg-white rounded-xl shadow-sm border border-slate-200/80 p-5 flex flex-col justify-between">
+                <div>
+                    <h2 class="text-center font-bold text-slate-800 text-base mb-3">
+                        Wajah Uji (Objek B)
+                    </h2>
+
+                    <!-- Input File Bar -->
+                    <div class="flex items-center justify-center gap-2.5 mb-4 flex-wrap">
+                        <label for="fileInputB" class="cursor-pointer bg-blue-50 hover:bg-blue-100 text-blue-600 font-semibold text-xs px-3.5 py-2 rounded-lg border border-blue-200/60 transition-colors select-none">
+                            Choose File
+                        </label>
+                        <input type="file" id="fileInputB" accept="image/*" class="hidden" onchange="handleImageUpload(event, 'B')">
+                        <span id="fileNameB" class="text-xs text-slate-500 truncate max-w-[200px] sm:max-w-[230px]" title="sample_uji_B_zoom.png">
+                            sample_uji_B_zoom.png
+                        </span>
+                    </div>
+
+                    <!-- Area Preview Foto Wajah B + Overlay ROI -->
+                    <div class="flex justify-center mb-4">
+                        <div class="relative w-52 h-56 sm:w-56 sm:h-60 bg-slate-100 rounded-lg overflow-hidden border border-slate-200 shadow-inner flex items-center justify-center group">
+                            <img id="previewImgB" alt="Preview Objek B" class="w-full h-full object-cover" />
+                            <canvas id="overlayCanvasB" class="absolute inset-0 w-full h-full pointer-events-none"></canvas>
+                            <span class="absolute bottom-1.5 right-1.5 bg-slate-900/65 text-white text-[10px] px-1.5 py-0.5 rounded backdrop-blur-xs">
+                                ROI Auto-Detect
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Visualisasi LBP Objek B -->
+                <div class="mt-2 pt-2 border-t border-slate-100">
+                    <div class="flex items-center justify-between mb-1.5">
+                        <label class="text-xs font-semibold text-slate-700">
+                            ROI &amp; Visualisasi LBP Objek B:
+                        </label>
+                        <span id="roiDimB" class="text-[11px] text-slate-400 font-mono">128×128 px</span>
+                    </div>
+                    <div class="w-full h-11 bg-slate-900 rounded-md overflow-hidden border border-slate-300 shadow-inner">
+                        <canvas id="lbpCanvasB" class="w-full h-full block lbp-canvas"></canvas>
+                    </div>
+                </div>
+            </section>
+
+        </div>
+
+        <!-- Bar Kontrol Ambang Batas & Tombol Eksekusi -->
+        <section class="bg-white rounded-xl shadow-sm border border-slate-200/80 px-5 py-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div class="flex flex-wrap items-center gap-3 w-full sm:w-auto justify-center sm:justify-start">
+                <label for="thresholdSlider" class="text-xs sm:text-sm font-bold text-slate-700 whitespace-nowrap">
+                    Ambang Verifikasi (NCC):
+                </label>
+                <input 
+                    type="range" 
+                    id="thresholdSlider" 
+                    min="0.00" 
+                    max="1.00" 
+                    step="0.01" 
+                    value="0.75" 
+                    class="w-36 sm:w-44"
+                    oninput="updateThresholdDisplay(this.value)"
+                >
+                <span id="thresholdBadge" class="inline-flex items-center justify-center bg-slate-50 border border-slate-200 text-blue-600 font-bold text-xs px-3 py-1.5 rounded-md min-w-[52px] shadow-2xs">
+                    0.75
+                </span>
+            </div>
+
+            <div class="flex items-center gap-2.5 w-full sm:w-auto justify-center sm:justify-end">
+                <button 
+                    type="button" 
+                    onclick="loadDefaultSamples()" 
+                    class="px-3.5 py-2.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 text-xs font-semibold transition-colors cursor-pointer"
+                    title="Muat ulang citra sampel bawaan"
+                >
+                    Reset Sampel
+                </button>
+                <button 
+                    type="button" 
+                    id="verifyBtn"
+                    onclick="runFaceVerification()" 
+                    class="bg-[#2563eb] hover:bg-blue-700 active:bg-blue-800 text-white font-semibold text-xs sm:text-sm px-5 py-2.5 rounded-lg shadow-sm transition-all cursor-pointer flex items-center gap-2"
+                >
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    Jalankan Verifikasi Wajah
+                </button>
+            </div>
+        </section>
+
+        <!-- Panel Hasil Verifikasi -->
+        <section id="resultPanel" class="rounded-xl border-2 border-emerald-400 bg-emerald-50/45 shadow-sm p-5 sm:p-6 transition-all duration-300">
+            
+            <!-- Header Hasil & Pill Badge -->
+            <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-3 mb-4">
+                <div>
+                    <h3 id="resultTitle" class="text-lg sm:text-xl font-bold text-emerald-900">
+                        Hasil Verifikasi: COCOK (Identik)
+                    </h3>
+                    <p id="resultSubtitle" class="text-xs sm:text-sm text-slate-700 mt-1 font-medium">
+                        Skor Kemiripan Gabungan: <span id="combinedScoreText" class="font-bold text-slate-900">0.0000</span> &nbsp;|&nbsp; Ambang Batas (Threshold): <span id="activeThresholdText" class="font-bold text-slate-900">0.75</span>
+                    </p>
+                </div>
+
+                <div class="self-start">
+                    <span id="statusBadge" class="inline-block bg-emerald-200/80 text-emerald-900 font-extrabold text-xs tracking-wider px-3.5 py-1 rounded-full uppercase border border-emerald-300/70">
+                        MATCH
                     </span>
                 </div>
-
-                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <label class="cursor-pointer">
-                        <input type="radio" name="featureMode" value="standard" checked onchange="processComparison()" class="peer sr-only">
-                        <div class="p-3 rounded-xl border border-slate-800 bg-slate-950/60 peer-checked:border-indigo-500 peer-checked:bg-indigo-950/30 transition h-full">
-                            <div class="font-semibold text-xs text-white mb-1">1. Momen Hu Standar</div>
-                            <p class="text-[11px] text-slate-400 leading-relaxed">Ekstraksi 7 Momen Hu pada seluruh area citra (Full Image).</p>
-                        </div>
-                    </label>
-
-                    <label class="cursor-pointer">
-                        <input type="radio" name="featureMode" value="roi" onchange="processComparison()" class="peer sr-only">
-                        <div class="p-3 rounded-xl border border-slate-800 bg-slate-950/60 peer-checked:border-indigo-500 peer-checked:bg-indigo-950/30 transition h-full">
-                            <div class="font-semibold text-xs text-emerald-300 mb-1">2. Optimasi ROI Wajah</div>
-                            <p class="text-[11px] text-slate-400 leading-relaxed">Deteksi kontur wajah otomatis & crop ROI agar background ramai terabaikan.</p>
-                        </div>
-                    </label>
-
-                    <label class="cursor-pointer">
-                        <input type="radio" name="featureMode" value="roi_lbp" onchange="processComparison()" class="peer sr-only">
-                        <div class="p-3 rounded-xl border border-slate-800 bg-slate-950/60 peer-checked:border-indigo-500 peer-checked:bg-indigo-950/30 transition h-full">
-                            <div class="font-semibold text-xs text-cyan-300 mb-1">3. ROI + Hu + LBP</div>
-                            <p class="text-[11px] text-slate-400 leading-relaxed">Gabungan geometri Momen Hu & tekstur Local Binary Pattern pada ROI wajah.</p>
-                        </div>
-                    </label>
-                </div>
             </div>
 
-            <!-- Pengaturan Threshold & Hasil Pencocokan -->
-            <div class="lg:col-span-5 bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg flex flex-col justify-between">
-                <div>
-                    <div class="flex items-center justify-between mb-2">
-                        <label for="thresholdSlider" class="text-sm font-bold text-white flex items-center gap-2">
-                            <i class="fa-solid fa-sliders text-amber-400"></i>
-                            Ambang Batas (Threshold)
-                        </label>
-                        <span id="thresholdValDisplay" class="font-mono text-sm font-bold text-amber-400 bg-slate-950 px-2.5 py-0.5 rounded border border-slate-800">0.25</span>
-                    </div>
-                    <input type="range" id="thresholdSlider" min="0.01" max="1.50" step="0.01" value="0.25" oninput="onThresholdChange()" class="w-full accent-indigo-500 cursor-pointer">
-                    <div class="flex justify-between text-[10px] text-slate-500 font-mono mt-1">
-                        <span>0.01 (Sangat Ketat)</span>
-                        <span>0.50 (Sedang)</span>
-                        <span>1.50 (Longgar)</span>
-                    </div>
-                </div>
+            <!-- Tabel Rincian Metrik Fitur -->
+            <div class="table-container overflow-x-auto bg-white/80 rounded-lg border border-slate-200/80">
+                <table class="w-full text-left border-collapse min-w-[640px]">
+                    <thead>
+                        <tr class="border-b border-slate-200 bg-slate-50/90 text-[11px] sm:text-xs font-bold text-slate-700">
+                            <th class="py-3 px-4">Deskriptor / Metrik Fitur</th>
+                            <th class="py-3 px-4">Objek A (Referensi)</th>
+                            <th class="py-3 px-4">Objek B (Uji)</th>
+                            <th class="py-3 px-4">Skor Kemiripan (NCC)</th>
+                            <th class="py-3 px-4">Bobot Evaluasi</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-200/70 text-xs text-slate-600">
+                        <!-- Baris 1: LBP -->
+                        <tr class="hover:bg-slate-50/60 transition-colors">
+                            <td class="py-3 px-4 font-bold text-slate-800">LBP (Local Binary Patterns)</td>
+                            <td class="py-3 px-4">256 bin histogram (Tekstur ROI)</td>
+                            <td class="py-3 px-4">256 bin histogram (Tekstur ROI)</td>
+                            <td id="scoreLBP" class="py-3 px-4 font-bold text-blue-600 font-mono">0.0000</td>
+                            <td class="py-3 px-4 font-medium text-slate-600">50%</td>
+                        </tr>
 
-                <!-- Match Result Box -->
-                <div id="resultBanner" class="mt-4 p-3.5 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between">
-                    <div>
-                        <span class="text-[11px] text-slate-400 block">Jarak Kemiripan (Distance)</span>
-                        <span id="distanceDisplay" class="font-mono text-xl font-bold text-slate-200">-</span>
-                    </div>
-                    <div id="matchBadge" class="px-4 py-2 rounded-xl text-xs font-bold bg-slate-800 text-slate-400 border border-slate-700">
-                        MENUNGGU FOTO
-                    </div>
-                </div>
+                        <!-- Baris 2: Histogram Warna RGB -->
+                        <tr class="hover:bg-slate-50/60 transition-colors">
+                            <td class="py-3 px-4 font-bold text-slate-800">Histogram Warna (RGB)</td>
+                            <td class="py-3 px-4">Vektor 192-dim (Warna ROI)</td>
+                            <td class="py-3 px-4">Vektor 192-dim (Warna ROI)</td>
+                            <td id="scoreRGB" class="py-3 px-4 font-bold text-blue-600 font-mono">0.0000</td>
+                            <td class="py-3 px-4 font-medium text-slate-600">30%</td>
+                        </tr>
+
+                        <!-- Baris 3: Momen Hu -->
+                        <tr class="hover:bg-slate-50/60 transition-colors">
+                            <td class="py-3 px-4 font-bold text-slate-800">Momen Hu (Shape Invariants)</td>
+                            <td id="huDescA" class="py-3 px-4 font-mono text-[11px] text-slate-700">[0.00, 0.00, 0.00, ...]</td>
+                            <td id="huDescB" class="py-3 px-4 font-mono text-[11px] text-slate-700">[0.00, 0.00, 0.00, ...]</td>
+                            <td id="scoreHu" class="py-3 px-4 font-bold text-blue-600 font-mono">0.0000</td>
+                            <td class="py-3 px-4 font-medium text-slate-600">20%</td>
+                        </tr>
+
+                        <!-- Baris 4: Geometri ROI Terdeteksi -->
+                        <tr class="hover:bg-slate-50/60 transition-colors bg-slate-50/30">
+                            <td class="py-3 px-4 font-bold text-slate-800">Geometri ROI Terdeteksi</td>
+                            <td id="geomDescA" class="py-3 px-4 font-medium text-slate-700">Luas: 0px | Rasio: 0.00</td>
+                            <td id="geomDescB" class="py-3 px-4 font-medium text-slate-700">Luas: 0px | Rasio: 0.00</td>
+                            <td class="py-3 px-4 text-slate-400 font-mono">-</td>
+                            <td class="py-3 px-4 text-slate-400 font-mono">-</td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
 
         </section>
 
-        <!-- Image Upload & Processing Panels (Wajah A & Wajah B) -->
-        <section class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    </div>
 
-            <!-- PANEL WAJAH A (REFERENSI) -->
-            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg flex flex-col gap-4">
-                <div class="flex items-center justify-between border-b border-slate-800 pb-3">
-                    <div>
-                        <h3 class="font-bold text-white text-sm flex items-center gap-2">
-                            <span class="w-6 h-6 rounded-lg bg-indigo-600 text-white text-xs flex items-center justify-center font-bold">A</span>
-                            Foto Referensi (Wajah A)
-                        </h3>
-                        <p class="text-[11px] text-slate-400 mt-0.5">Citra acuan identitas yang akan dicocokkan</p>
-                    </div>
-                    <label class="cursor-pointer px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-lg transition flex items-center gap-1.5 shadow">
-                        <i class="fa-solid fa-upload"></i> Unggah Wajah A
-                        <input type="file" id="inputImageA" accept="image/*" onchange="handleImageUpload(event, 'A')" class="hidden">
-                    </label>
-                </div>
-
-                <!-- Dual Canvas View: Original & Processed -->
-                <div class="grid grid-cols-2 gap-3">
-                    <div class="bg-slate-950 border border-slate-800 rounded-xl p-2 flex flex-col">
-                        <span class="text-[10px] text-slate-400 font-medium mb-1.5 text-center">Citra Asli + Deteksi ROI</span>
-                        <div class="relative aspect-square bg-black/50 rounded-lg overflow-hidden flex items-center justify-center">
-                            <canvas id="canvasOrigA" class="max-w-full max-h-full object-contain"></canvas>
-                            <span id="placeholderA" class="text-[11px] text-slate-600 text-center px-2">Belum ada gambar</span>
-                        </div>
-                    </div>
-                    <div class="bg-slate-950 border border-slate-800 rounded-xl p-2 flex flex-col">
-                        <span id="procLabelA" class="text-[10px] text-indigo-300 font-medium mb-1.5 text-center">Hasil Olahan Citra</span>
-                        <div class="relative aspect-square bg-black/50 rounded-lg overflow-hidden flex items-center justify-center">
-                            <canvas id="canvasProcA" class="max-w-full max-h-full object-contain"></canvas>
-                            <span id="placeholderProcA" class="text-[11px] text-slate-600 text-center px-2">Menunggu proses</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- PANEL WAJAH B (UJI + SKENARIO 2 ROTASI/ZOOM) -->
-            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg flex flex-col gap-4">
-                <div class="flex items-center justify-between border-b border-slate-800 pb-3">
-                    <div>
-                        <h3 class="font-bold text-white text-sm flex items-center gap-2">
-                            <span class="w-6 h-6 rounded-lg bg-emerald-600 text-white text-xs flex items-center justify-center font-bold">B</span>
-                            Foto Uji (Wajah B)
-                        </h3>
-                        <p class="text-[11px] text-slate-400 mt-0.5">Citra uji dengan kontrol transformasi Skenario 2</p>
-                    </div>
-                    <label class="cursor-pointer px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-lg transition flex items-center gap-1.5 shadow">
-                        <i class="fa-solid fa-upload"></i> Unggah Wajah B
-                        <input type="file" id="inputImageB" accept="image/*" onchange="handleImageUpload(event, 'B')" class="hidden">
-                    </label>
-                </div>
-
-                <!-- Dual Canvas View: Transformed & Processed -->
-                <div class="grid grid-cols-2 gap-3">
-                    <div class="bg-slate-950 border border-slate-800 rounded-xl p-2 flex flex-col">
-                        <span class="text-[10px] text-slate-400 font-medium mb-1.5 text-center">Citra Uji (Rotasi / Zoom)</span>
-                        <div class="relative aspect-square bg-black/50 rounded-lg overflow-hidden flex items-center justify-center">
-                            <canvas id="canvasOrigB" class="max-w-full max-h-full object-contain"></canvas>
-                            <span id="placeholderB" class="text-[11px] text-slate-600 text-center px-2">Belum ada gambar</span>
-                        </div>
-                    </div>
-                    <div class="bg-slate-950 border border-slate-800 rounded-xl p-2 flex flex-col">
-                        <span id="procLabelB" class="text-[10px] text-emerald-300 font-medium mb-1.5 text-center">Hasil Olahan Citra</span>
-                        <div class="relative aspect-square bg-black/50 rounded-lg overflow-hidden flex items-center justify-center">
-                            <canvas id="canvasProcB" class="max-w-full max-h-full object-contain"></canvas>
-                            <span id="placeholderProcB" class="text-[11px] text-slate-600 text-center px-2">Menunggu proses</span>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Kontrol Transformasi Skenario 2 (Rotasi & Zoom) -->
-                <div class="bg-slate-950 border border-slate-800/80 rounded-xl p-3 space-y-2.5">
-                    <div class="flex items-center justify-between">
-                        <span class="text-[11px] font-semibold text-indigo-300 flex items-center gap-1.5">
-                            <i class="fa-solid fa-rotate"></i> Pengujian Skenario 2 (Invariansi Rotasi & Skala)
-                        </span>
-                        <button onclick="resetTransformB()" class="text-[10px] px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 transition">
-                            Reset (0° / 1.0x)
-                        </button>
-                    </div>
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div>
-                            <div class="flex justify-between text-[11px] text-slate-400 mb-1">
-                                <span>Rotasi Sudut</span>
-                                <span id="rotateVal" class="font-mono text-white">0°</span>
-                            </div>
-                            <input type="range" id="rotateSlider" min="0" max="360" step="1" value="0" oninput="onTransformChange()" class="w-full accent-emerald-500 cursor-pointer">
-                        </div>
-                        <div>
-                            <div class="flex justify-between text-[11px] text-slate-400 mb-1">
-                                <span>Zoom / Skala</span>
-                                <span id="zoomVal" class="font-mono text-white">1.00x</span>
-                            </div>
-                            <input type="range" id="zoomSlider" min="0.5" max="2.0" step="0.05" value="1.0" oninput="onTransformChange()" class="w-full accent-emerald-500 cursor-pointer">
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-        </section>
-
-        <!-- Bottom Section: 7 Hu Moments Table & Report Recorder -->
-        <section class="grid grid-cols-1 lg:grid-cols-12 gap-6">
-
-            <!-- Tabel Perbandingan 7 Nilai Momen Hu -->
-            <div class="lg:col-span-5 bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg flex flex-col">
-                <h3 class="text-sm font-bold text-white mb-1 flex items-center gap-2">
-                    <i class="fa-solid fa-table-list text-indigo-400"></i>
-                    7 Nilai Invarian Momen Hu (Log-Transformed)
-                </h3>
-                <p class="text-[11px] text-slate-400 mb-3">Nilai H1–H7 bersifat invarian terhadap translasi, skala, dan rotasi.</p>
-
-                <div class="overflow-x-auto border border-slate-800 rounded-xl bg-slate-950 flex-1">
-                    <table class="w-full text-left text-xs">
-                        <thead class="bg-slate-900 text-slate-400 border-b border-slate-800">
-                            <tr>
-                                <th class="p-2.5">Momen</th>
-                                <th class="p-2.5">Wajah A (Ref)</th>
-                                <th class="p-2.5">Wajah B (Uji)</th>
-                                <th class="p-2.5 text-right">Selisih |Δ|</th>
-                            </tr>
-                        </thead>
-                        <tbody id="huTableBody" class="divide-y divide-slate-800/60 font-mono text-[11px]">
-                            <tr><td colspan="4" class="p-4 text-center text-slate-500 font-sans">Unggah kedua foto untuk melihat nilai Momen Hu.</td></tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-
-            <!-- Pencatat Tabel Laporan Praktikum (Skenario 1, 2, 3) -->
-            <div class="lg:col-span-7 bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg flex flex-col">
-                <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
-                    <div>
-                        <h3 class="text-sm font-bold text-white flex items-center gap-2">
-                            <i class="fa-solid fa-clipboard-check text-emerald-400"></i>
-                            Tabel Laporan Pengujian Praktikum
-                        </h3>
-                        <p class="text-[11px] text-slate-400">Rekam hasil Skenario 1, 2, dan 3 untuk disalin ke laporan tugas.</p>
-                    </div>
-                    <div class="flex items-center gap-2">
-                        <button onclick="copyReportTable()" class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs text-slate-200 rounded-lg border border-slate-700 flex items-center gap-1.5 transition">
-                            <i class="fa-solid fa-copy"></i> Salin Tabel
-                        </button>
-                        <button onclick="exportReportCSV()" class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs text-emerald-300 rounded-lg border border-slate-700 flex items-center gap-1.5 transition">
-                            <i class="fa-solid fa-file-csv"></i> CSV
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Baris Input Catat Hasil -->
-                <div class="flex flex-wrap sm:flex-nowrap gap-2 mb-3">
-                    <select id="scenarioSelect" class="bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500 flex-1">
-                        <option value="Skenario 1: Orang Sama (Normal)">Skenario 1: Orang Sama (Normal)</option>
-                        <option value="Skenario 2: Orang Sama (Rotasi / Zoom)">Skenario 2: Orang Sama (Rotasi / Zoom)</option>
-                        <option value="Skenario 3: Dua Orang Berbeda">Skenario 3: Dua Orang Berbeda</option>
-                        <option value="Uji Optimasi: Background Ramai">Uji Optimasi: Background Ramai</option>
-                    </select>
-                    <input type="text" id="scenarioNote" placeholder="Catatan (misal: Rotasi 45°, Zoom 1.5x)" class="bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 flex-1">
-                    <button onclick="recordScenarioResult()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-lg transition whitespace-nowrap flex items-center gap-1.5 shadow">
-                        <i class="fa-solid fa-plus"></i> Catat Hasil
-                    </button>
-                </div>
-
-                <!-- Tabel Riwayat Laporan -->
-                <div class="overflow-x-auto border border-slate-800 rounded-xl bg-slate-950 flex-1 min-h-[180px]">
-                    <table class="w-full text-left text-xs">
-                        <thead class="bg-slate-900 text-slate-400 border-b border-slate-800">
-                            <tr>
-                                <th class="p-2.5">Skenario</th>
-                                <th class="p-2.5">Metode</th>
-                                <th class="p-2.5">Distance</th>
-                                <th class="p-2.5">Threshold</th>
-                                <th class="p-2.5">Status</th>
-                                <th class="p-2.5 text-right">Hapus</th>
-                            </tr>
-                        </thead>
-                        <tbody id="reportTableBody" class="divide-y divide-slate-800/60">
-                            <tr><td colspan="6" class="p-4 text-center text-slate-500">Belum ada data pengujian yang dicatat.</td></tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-
-        </section>
-
-    </main>
-
-    <!-- Toast Notification -->
-    <div id="toastContainer" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"></div>
-
-    <!-- JavaScript Application Logic -->
+    <!-- JavaScript: Algoritma Computer Vision Nyata (ROI Detection, LBP, RGB Histogram, Hu Moments, NCC) -->
     <script>
-        // ==========================================
-        // 1. STATE & GLOBAL VARIABLES
-        // ==========================================
-        let cvReady = false;
-        let imgElementA = null;
-        let imgElementB = null;
+        // State penyimpanan objek gambar yang dimuat
+        const imageState = {
+            A: { img: null, features: null },
+            B: { img: null, features: null }
+        };
 
-        let lastHuA = null;
-        let lastHuB = null;
-        let lastDistance = null;
-        let reportRecords = [];
+        // Ukuran standar normalisasi ROI untuk ekstraksi fitur konsisten
+        const ROI_SIZE = 128;
 
-        // ==========================================
-        // 2. OPENCV.JS INITIALIZATION
-        // ==========================================
-        function onOpenCvReady() {
-            if (typeof cv !== 'undefined' && cv.Mat) {
-                cvReady = true;
-                document.getElementById('cvDot').className = 'w-2.5 h-2.5 rounded-full bg-emerald-400';
-                document.getElementById('cvStatusText').textContent = 'OpenCV.js Siap';
-                showToast('Engine OpenCV.js berhasil dimuat!', 'success');
+        /**
+         * Menampilkan pesan notifikasi non-blocking (pengganti alert)
+         */
+        function showMessage(text, type = 'info') {
+            const box = document.getElementById('messageBox');
+            const textEl = document.getElementById('messageText');
+            textEl.textContent = text;
+            
+            box.className = 'rounded-xl p-3.5 text-sm font-medium border shadow-sm transition-all duration-300 flex items-center justify-between';
+            if (type === 'error') {
+                box.classList.add('bg-red-50', 'border-red-300', 'text-red-800');
+            } else if (type === 'success') {
+                box.classList.add('bg-emerald-50', 'border-emerald-300', 'text-emerald-800');
             } else {
-                // Fallback jika runtime WASM masih inisialisasi
-                cv['onRuntimeInitialized'] = () => {
-                    cvReady = true;
-                    document.getElementById('cvDot').className = 'w-2.5 h-2.5 rounded-full bg-emerald-400';
-                    document.getElementById('cvStatusText').textContent = 'OpenCV.js Siap';
-                    showToast('Engine OpenCV.js berhasil dimuat!', 'success');
-                };
+                box.classList.add('bg-blue-50', 'border-blue-300', 'text-blue-800');
+            }
+            box.classList.remove('hidden');
+        }
+
+        function hideMessage() {
+            document.getElementById('messageBox').classList.add('hidden');
+        }
+
+        /**
+         * Memperbarui nilai threshold pada UI & mengevaluasi ulang jika hasil sudah ada
+         */
+        function updateThresholdDisplay(val) {
+            const numVal = parseFloat(val).toFixed(2);
+            document.getElementById('thresholdBadge').textContent = numVal;
+            document.getElementById('activeThresholdText').textContent = numVal;
+            
+            if (imageState.A.features && imageState.B.features) {
+                evaluateAndRenderResults();
             }
         }
 
-        // ==========================================
-        // 3. IMAGE UPLOAD & CANVAS RENDERING
-        // ==========================================
+        /**
+         * Handler saat pengguna memilih file gambar lokal untuk Objek A atau B
+         */
         function handleImageUpload(event, target) {
             const file = event.target.files[0];
             if (!file) return;
+
+            if (!file.type.startsWith('image/')) {
+                showMessage('Mohon unggah file gambar yang valid (JPG, PNG, WEBP).', 'error');
+                return;
+            }
+
+            const fileNameEl = document.getElementById(`fileName${target}`);
+            fileNameEl.textContent = file.name;
+            fileNameEl.title = file.name;
 
             const reader = new FileReader();
             reader.onload = function(e) {
                 const img = new Image();
                 img.onload = function() {
-                    if (target === 'A') {
-                        imgElementA = img;
-                        document.getElementById('placeholderA').classList.add('hidden');
-                        document.getElementById('placeholderProcA').classList.add('hidden');
-                    } else {
-                        imgElementB = img;
-                        document.getElementById('placeholderB').classList.add('hidden');
-                        document.getElementById('placeholderProcB').classList.add('hidden');
+                    imageState[target].img = img;
+                    document.getElementById(`previewImg${target}`).src = e.target.result;
+                    
+                    // Langsung ekstrak fitur ROI & perbarui visualisasi LBP
+                    imageState[target].features = extractAllFeatures(img, target);
+                    
+                    if (imageState.A.features && imageState.B.features) {
+                        evaluateAndRenderResults();
                     }
-                    processComparison();
                 };
                 img.src = e.target.result;
             };
             reader.readAsDataURL(file);
         }
 
-        function onTransformChange() {
-            const rot = document.getElementById('rotateSlider').value;
-            const zoom = parseFloat(document.getElementById('zoomSlider').value).toFixed(2);
-            document.getElementById('rotateVal').textContent = `${rot}°`;
-            document.getElementById('zoomVal').textContent = `${zoom}x`;
-            if (imgElementB) {
-                processComparison();
-            }
-        }
-
-        function resetTransformB() {
-            document.getElementById('rotateSlider').value = 0;
-            document.getElementById('zoomSlider').value = 1.0;
-            onTransformChange();
-        }
-
-        function onThresholdChange() {
-            const val = parseFloat(document.getElementById('thresholdSlider').value).toFixed(2);
-            document.getElementById('thresholdValDisplay').textContent = val;
-            updateMatchDecision();
-        }
-
-        // Gambar citra ke canvas dengan opsi rotasi & zoom (untuk Skenario 2 pada Wajah B)
-        function renderBaseImageToCanvas(img, canvasId, angleDeg = 0, scale = 1.0) {
-            const canvas = document.getElementById(canvasId);
+        /**
+         * Membuat gambar wajah sintetis realistis di atas canvas agar aplikasi langsung
+         * siap uji saat pertama kali dibuka (mensimulasikan Skenario 2: Objek A & Objek B zoom/crop berbeda)
+         */
+        function generateSyntheticFaceDataURL(variant = 'A') {
+            const canvas = document.createElement('canvas');
+            canvas.width = 300;
+            canvas.height = 320;
             const ctx = canvas.getContext('2d');
 
-            // Standarisasi ukuran kerja maksimal 320px agar pemrosesan cepat & konsisten
-            const maxDim = 320;
-            let w = img.width;
-            let h = img.height;
-            if (w > maxDim || h > maxDim) {
-                const ratio = Math.min(maxDim / w, maxDim / h);
-                w = Math.round(w * ratio);
-                h = Math.round(h * ratio);
+            // Latar belakang lembut
+            const bgGrad = ctx.createLinearGradient(0, 0, 300, 320);
+            if (variant === 'A') {
+                bgGrad.addColorStop(0, '#e2e8f0');
+                bgGrad.addColorStop(1, '#cbd5e1');
+            } else {
+                bgGrad.addColorStop(0, '#dbeafe');
+                bgGrad.addColorStop(1, '#cbd5e1');
             }
+            ctx.fillStyle = bgGrad;
+            ctx.fillRect(0, 0, 300, 320);
 
-            canvas.width = w;
-            canvas.height = h;
-
+            // Terapkan sedikit transformasi skala/geser untuk varian B (simulasi zoom & pose sedikit berbeda)
             ctx.save();
-            // Isi background netral saat gambar diputar/di-zoom out
-            ctx.fillStyle = '#0f172a';
-            ctx.fillRect(0, 0, w, h);
+            if (variant === 'B') {
+                ctx.translate(150, 160);
+                ctx.scale(1.12, 1.12);
+                ctx.rotate(0.035); // sedikit miring ~2 derajat
+                ctx.translate(-146, -155);
+            }
 
-            ctx.translate(w / 2, h / 2);
-            ctx.rotate((angleDeg * Math.PI) / 180);
-            ctx.scale(scale, scale);
-            ctx.drawImage(img, -w / 2, -h / 2, w, h);
+            // Siluet Hijab / Rambut luar (warna dusty pink seperti referensi)
+            ctx.fillStyle = '#d49a9e';
+            ctx.beginPath();
+            ctx.ellipse(150, 175, 92, 118, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Bahu / Pakaian
+            ctx.fillStyle = '#c88a8e';
+            ctx.beginPath();
+            ctx.ellipse(150, 310, 125, 75, 0, Math.PI, Math.PI * 2);
+            ctx.fill();
+
+            // Wajah (Warna kulit natural YCbCr skin-tone friendly)
+            const skinGrad = ctx.createRadialGradient(145, 145, 15, 150, 155, 75);
+            skinGrad.addColorStop(0, '#f3c6a5');
+            skinGrad.addColorStop(0.75, '#e5b08d');
+            skinGrad.addColorStop(1, '#d39a76');
+            ctx.fillStyle = skinGrad;
+            ctx.beginPath();
+            ctx.ellipse(150, 155, 58, 72, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Lipatan bingkai hijab di sekitar wajah
+            ctx.strokeStyle = '#b97b7f';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.ellipse(150, 156, 60, 74, 0, 0, Math.PI * 2);
+            ctx.stroke();
+
+            // Alis kiri & kanan
+            ctx.strokeStyle = '#4a3228';
+            ctx.lineWidth = 3.2;
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.moveTo(114, 132);
+            ctx.quadraticCurveTo(127, 126, 139, 131);
+            ctx.moveTo(161, 131);
+            ctx.quadraticCurveTo(173, 126, 186, 132);
+            ctx.stroke();
+
+            // Mata kiri & kanan
+            const drawEye = (cx, cy) => {
+                ctx.fillStyle = '#ffffff';
+                ctx.beginPath();
+                ctx.ellipse(cx, cy, 10, 6, 0, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.fillStyle = '#3b261d';
+                ctx.beginPath();
+                ctx.arc(cx, cy, 4.8, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.fillStyle = '#ffffff';
+                ctx.beginPath();
+                ctx.arc(cx - 1.5, cy - 1.5, 1.5, 0, Math.PI * 2);
+                ctx.fill();
+            };
+            drawEye(127, 145);
+            drawEye(173, 145);
+
+            // Hidung & bayangan halus
+            ctx.strokeStyle = '#c48664';
+            ctx.lineWidth = 2.2;
+            ctx.beginPath();
+            ctx.moveTo(150, 147);
+            ctx.lineTo(147, 169);
+            ctx.quadraticCurveTo(150, 173, 155, 169);
+            ctx.stroke();
+
+            // Rona pipi halus
+            ctx.fillStyle = 'rgba(225, 110, 110, 0.16)';
+            ctx.beginPath();
+            ctx.arc(120, 166, 12, 0, Math.PI * 2);
+            ctx.arc(180, 166, 12, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Bibir tersenyum
+            ctx.strokeStyle = '#b85d64';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(135, 190);
+            ctx.quadraticCurveTo(150, 202, 165, 190);
+            ctx.stroke();
+
+            // Tambahkan mikro-tekstur kulit deterministik agar LBP kaya pola
+            for (let y = 85; y < 225; y += 3) {
+                for (let x = 95; x < 205; x += 3) {
+                    const hash = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453;
+                    const frac = hash - Math.floor(hash);
+                    if (frac > 0.55) {
+                        ctx.fillStyle = 'rgba(130, 80, 55, 0.06)';
+                        ctx.fillRect(x, y, 2, 2);
+                    }
+                }
+            }
+
             ctx.restore();
+            return canvas.toDataURL('image/png');
         }
 
-        // ==========================================
-        // 4. EKSTRAKSI FITUR: HU MOMENTS, ROI WAJAH & LBP
-        // ==========================================
-        function extractFeaturesFromCanvas(origCanvasId, procCanvasId, mode) {
-            let src = cv.imread(origCanvasId);
-            let workingMat = new cv.Mat();
-            let roiRect = null;
+        /**
+         * Memuat gambar sampel default untuk Objek A dan Objek B
+         */
+        function loadDefaultSamples() {
+            hideMessage();
+            document.getElementById('fileNameA').textContent = 'sample_wajah_referensi_A.png';
+            document.getElementById('fileNameB').textContent = 'sample_wajah_uji_B_zoom.png';
 
-            // STEP 1: Optimasi Deteksi Kontur / ROI Wajah (Mode 'roi' atau 'roi_lbp')
-            if (mode === 'roi' || mode === 'roi_lbp') {
-                roiRect = detectFaceContourROI(src);
-                if (roiRect) {
-                    // Gambar kotak hijau ROI pada canvas asli sebagai visualisasi deteksi
-                    let displaySrc = src.clone();
-                    let pt1 = new cv.Point(roiRect.x, roiRect.y);
-                    let pt2 = new cv.Point(roiRect.x + roiRect.width, roiRect.y + roiRect.height);
-                    cv.rectangle(displaySrc, pt1, pt2, [16, 185, 129, 255], 3);
-                    cv.imshow(origCanvasId, displaySrc);
-                    displaySrc.delete();
+            const urlA = generateSyntheticFaceDataURL('A');
+            const urlB = generateSyntheticFaceDataURL('B');
 
-                    // Crop area wajah saja
-                    workingMat = src.roi(roiRect);
-                } else {
-                    // Fallback center crop 65% jika kontur kulit tidak dominan
-                    const cw = Math.round(src.cols * 0.65);
-                    const ch = Math.round(src.rows * 0.65);
-                    const cx = Math.round((src.cols - cw) / 2);
-                    const cy = Math.round((src.rows - ch) / 2);
-                    roiRect = new cv.Rect(cx, cy, cw, ch);
-                    workingMat = src.roi(roiRect);
+            let loadedCount = 0;
+            const onBothLoaded = () => {
+                loadedCount++;
+                if (loadedCount === 2) {
+                    imageState.A.features = extractAllFeatures(imageState.A.img, 'A');
+                    imageState.B.features = extractAllFeatures(imageState.B.img, 'B');
+                    evaluateAndRenderResults();
                 }
+            };
+
+            const imgA = new Image();
+            imgA.onload = () => {
+                imageState.A.img = imgA;
+                document.getElementById('previewImgA').src = urlA;
+                onBothLoaded();
+            };
+            imgA.src = urlA;
+
+            const imgB = new Image();
+            imgB.onload = () => {
+                imageState.B.img = imgB;
+                document.getElementById('previewImgB').src = urlB;
+                onBothLoaded();
+            };
+            imgB.src = urlB;
+        }
+
+        /**
+         * 1. DETEKSI ROI WAJAH OTOMATIS (Segmentasi Warna Kulit YCbCr + Analisis Klaster)
+         * Menemukan bounding box area wajah secara nyata dari piksel citra.
+         */
+        function detectFaceROI(img) {
+            // Gunakan resolusi kerja yang cepat namun akurat (misal maks 240px)
+            const maxDim = 240;
+            const scale = Math.min(maxDim / img.width, maxDim / img.height, 1);
+            const w = Math.max(32, Math.round(img.width * scale));
+            const h = Math.max(32, Math.round(img.height * scale));
+
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = w;
+            tempCanvas.height = h;
+            const ctx = tempCanvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, w, h);
+
+            const imgData = ctx.getImageData(0, 0, w, h).data;
+            const skinMask = new Uint8Array(w * h);
+
+            let skinCount = 0;
+            let sumX = 0, sumY = 0;
+
+            // Langkah 1: Klasifikasi piksel kulit pada ruang warna RGB & YCbCr
+            for (let y = 0; y < h; y++) {
+                for (let x = 0; x < w; x++) {
+                    const idx = (y * w + x) * 4;
+                    const r = imgData[idx];
+                    const g = imgData[idx + 1];
+                    const b = imgData[idx + 2];
+
+                    // Konversi RGB ke YCbCr (standar ITU-R BT.601)
+                    const yVal = 0.299 * r + 0.587 * g + 0.114 * b;
+                    const cb = 128 - 0.168736 * r - 0.331264 * g + 0.5 * b;
+                    const cr = 128 + 0.5 * r - 0.418688 * g - 0.081312 * b;
+
+                    // Aturan deteksi kulit manusia (Chai & Ngan + Kovac RGB constraint)
+                    const isYCbCrSkin = (yVal > 60) && (cb >= 77 && cb <= 127) && (cr >= 133 && cr <= 173);
+                    const isRGBSkin = (r > 85 && g > 40 && b > 20) &&
+                                      (Math.max(r, g, b) - Math.min(r, g, b) > 15) &&
+                                      (Math.abs(r - g) > 12 && r > g && r > b);
+
+                    if (isYCbCrSkin && isRGBSkin) {
+                        skinMask[y * w + x] = 1;
+                        skinCount++;
+                        sumX += x;
+                        sumY += y;
+                    }
+                }
+            }
+
+            let roiX, roiY, roiW, roiH;
+
+            // Jika piksel kulit terdeteksi cukup signifikan (> 3% dari gambar)
+            if (skinCount > w * h * 0.03) {
+                const centerX = sumX / skinCount;
+                const centerY = sumY / skinCount;
+
+                // Hitung sebaran standar (standard deviation) dari centroid kulit untuk mengabaikan noise latar
+                let varX = 0, varY = 0;
+                for (let y = 0; y < h; y++) {
+                    for (let x = 0; x < w; x++) {
+                        if (skinMask[y * w + x] === 1) {
+                            varX += (x - centerX) ** 2;
+                            varY += (y - centerY) ** 2;
+                        }
+                    }
+                }
+                const stdX = Math.sqrt(varX / skinCount);
+                const stdY = Math.sqrt(varY / skinCount);
+
+                // Estimasi bounding box wajah berbasis centroid & deviasi standar (rasio wajah ~1 : 1.15)
+                roiW = Math.min(w * 0.85, Math.max(w * 0.32, stdX * 3.1));
+                roiH = Math.min(h * 0.85, Math.max(h * 0.36, stdY * 3.2));
+                roiX = Math.max(0, Math.min(w - roiW, centerX - roiW / 2));
+                roiY = Math.max(0, Math.min(h - roiH, centerY - roiH * 0.52));
             } else {
-                workingMat = src.clone();
+                // Fallback ke area tengah citra jika pencahayaan ekstrem / non-kulit
+                roiW = w * 0.56;
+                roiH = h * 0.62;
+                roiX = (w - roiW) / 2;
+                roiY = (h - roiH) / 2;
             }
 
-            // STEP 2: Konversi Grayscale & Equalize Histogram untuk ketahanan pencahayaan
-            let gray = new cv.Mat();
-            cv.cvtColor(workingMat, gray, cv.COLOR_RGBA2GRAY);
-            cv.GaussianBlur(gray, gray, new cv.Size(5, 5), 0);
-            cv.equalizeHist(gray, gray);
+            // Kembalikan koordinat ROI dalam skala dimensi asli gambar
+            const invScale = 1 / scale;
+            const origX = Math.round(roiX * invScale);
+            const origY = Math.round(roiY * invScale);
+            const origW = Math.max(16, Math.round(roiW * invScale));
+            const origH = Math.max(16, Math.round(roiH * invScale));
 
-            // STEP 3: Hitung 7 Momen Hu (Log-Transformed)
-            let moments = cv.moments(gray, false);
-            let huMat = new cv.Mat();
-            cv.HuMoments(moments, huMat);
+            // Hitung luas piksel terdeteksi pada skala kerja standar (seperti Luas: 17955px | Rasio: 1.14)
+            const normalizedArea = Math.round(roiW * roiH);
+            const aspectRatio = (roiH / roiW);
 
-            let huArray = [];
-            for (let i = 0; i < 7; i++) {
-                let val = huMat.doubleAt(i, 0);
-                // Transformasi logaritmik standar agar skala H1-H7 sebanding
-                let logVal = val !== 0 ? -1 * Math.sign(val) * Math.log10(Math.abs(val)) : 0;
-                huArray.push(logVal);
-            }
-
-            // STEP 4: Ekstraksi LBP (Local Binary Pattern) jika mode 'roi_lbp' dipilih
-            let lbpHist = null;
-            if (mode === 'roi_lbp') {
-                const lbpResult = computeLBPAndVisualize(gray);
-                lbpHist = lbpResult.histogram;
-                cv.imshow(procCanvasId, lbpResult.lbpMat);
-                lbpResult.lbpMat.delete();
-            } else {
-                // Visualisasikan citra hasil segmentasi / biner Otsu + kontur pada canvas olahan
-                let thresh = new cv.Mat();
-                cv.threshold(gray, thresh, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU);
-                cv.imshow(procCanvasId, thresh);
-                thresh.delete();
-            }
-
-            // Bersihkan memori OpenCV WASM
-            src.delete();
-            workingMat.delete();
-            gray.delete();
-            huMat.delete();
-
-            return { hu: huArray, lbp: lbpHist };
+            return {
+                x: origX,
+                y: origY,
+                width: origW,
+                height: origH,
+                areaPx: normalizedArea,
+                ratio: aspectRatio,
+                normBox: { x: roiX / w, y: roiY / h, w: roiW / w, h: roiH / h }
+            };
         }
 
-        // Deteksi ROI Wajah berbasis Segmentasi Warna Kulit (YCrCb) + Kontur Terbesar
-        function detectFaceContourROI(srcRGBA) {
-            let rgb = new cv.Mat();
-            let ycrcb = new cv.Mat();
-            let mask = new cv.Mat();
+        /**
+         * Menggambar kotak indikator ROI halus pada overlay canvas di atas preview foto
+         */
+        function drawROIOverlay(target, normBox) {
+            const canvas = document.getElementById(`overlayCanvas${target}`);
+            const parent = canvas.parentElement;
+            canvas.width = parent.clientWidth || 224;
+            canvas.height = parent.clientHeight || 240;
 
-            cv.cvtColor(srcRGBA, rgb, cv.COLOR_RGBA2RGB);
-            cv.cvtColor(rgb, ycrcb, cv.COLOR_RGB2YCrCb);
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            // Rentang warna kulit manusia pada ruang warna YCrCb
-            let low = new cv.Mat(ycrcb.rows, ycrcb.cols, ycrcb.type(), [0, 133, 77, 0]);
-            let high = new cv.Mat(ycrcb.rows, ycrcb.cols, ycrcb.type(), [255, 173, 127, 255]);
-            cv.inRange(ycrcb, low, high, mask);
+            const rx = normBox.x * canvas.width;
+            const ry = normBox.y * canvas.height;
+            const rw = normBox.w * canvas.width;
+            const rh = normBox.h * canvas.height;
 
-            // Operasi morfologi untuk menghilangkan noise background kecil
-            let kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(7, 7));
-            cv.morphologyEx(mask, mask, cv.MORPH_OPEN, kernel);
-            cv.morphologyEx(mask, mask, cv.MORPH_CLOSE, kernel);
+            // Garis sudut hijau/biru profesional untuk menandai ROI wajah
+            ctx.strokeStyle = 'rgba(37, 99, 235, 0.85)';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([5, 3]);
+            ctx.strokeRect(rx, ry, rw, rh);
+        }
 
-            let contours = new cv.MatVector();
-            let hierarchy = new cv.Mat();
-            cv.findContours(mask, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+        /**
+         * 2. EKSTRAKSI FITUR LENGKAP PADA ROI (LBP 256-bin, RGB 192-dim, & 7 Momen Hu)
+         */
+        function extractAllFeatures(img, target) {
+            const roi = detectFaceROI(img);
+            drawROIOverlay(target, roi.normBox);
 
-            let maxArea = 0;
-            let bestRect = null;
-            const minValidArea = (srcRGBA.rows * srcRGBA.cols) * 0.04; // Minimal 4% luas gambar
+            // Resize ROI ke kanvas standar 128x128 untuk ekstraksi fitur invarian skala
+            const roiCanvas = document.createElement('canvas');
+            roiCanvas.width = ROI_SIZE;
+            roiCanvas.height = ROI_SIZE;
+            const ctx = roiCanvas.getContext('2d');
+            ctx.drawImage(img, roi.x, roi.y, roi.width, roi.height, 0, 0, ROI_SIZE, ROI_SIZE);
 
-            for (let i = 0; i < contours.size(); i++) {
-                let cnt = contours.get(i);
-                let area = cv.contourArea(cnt);
-                if (area > maxArea && area > minValidArea) {
-                    maxArea = area;
-                    bestRect = cv.boundingRect(cnt);
+            const pixels = ctx.getImageData(0, 0, ROI_SIZE, ROI_SIZE).data;
+            const totalPixels = ROI_SIZE * ROI_SIZE;
+
+            // Array Grayscale & Histogram Warna RGB (64 bin per kanal = 192 dimensi)
+            const gray = new Float32Array(totalPixels);
+            const rgbHist = new Float64Array(192);
+
+            for (let i = 0; i < totalPixels; i++) {
+                const idx = i * 4;
+                const r = pixels[idx];
+                const g = pixels[idx + 1];
+                const b = pixels[idx + 2];
+
+                // Luminance Grayscale
+                gray[i] = 0.299 * r + 0.587 * g + 0.114 * b;
+
+                // Kuantisasi 256 -> 64 bin per kanal RGB
+                const rBin = Math.min(63, r >> 2);
+                const gBin = Math.min(63, g >> 2);
+                const bBin = Math.min(63, b >> 2);
+
+                rgbHist[rBin]++;
+                rgbHist[64 + gBin]++;
+                rgbHist[128 + bBin]++;
+            }
+
+            // Normalisasi L2 pada vektor Histogram RGB
+            normalizeVector(rgbHist);
+
+            // 3. EKSTRAKSI LOCAL BINARY PATTERNS (LBP 3x3 -> Histogram 256-bin + Peta Visual)
+            const lbpHist = new Float64Array(256);
+            const lbpMap = new Uint8ClampedArray(totalPixels);
+
+            // Offset 8 tetangga searah jarum jam
+            const dx = [-1,  0,  1, 1, 1, 0, -1, -1];
+            const dy = [-1, -1, -1, 0, 1, 1,  1,  0];
+
+            for (let y = 1; y < ROI_SIZE - 1; y++) {
+                for (let x = 1; x < ROI_SIZE - 1; x++) {
+                    const centerIdx = y * ROI_SIZE + x;
+                    const centerVal = gray[centerIdx];
+                    let lbpCode = 0;
+
+                    for (let k = 0; k < 8; k++) {
+                        const neighborIdx = (y + dy[k]) * ROI_SIZE + (x + dx[k]);
+                        if (gray[neighborIdx] >= centerVal) {
+                            lbpCode |= (1 << k);
+                        }
+                    }
+
+                    lbpMap[centerIdx] = lbpCode;
+                    lbpHist[lbpCode]++;
                 }
             }
 
-            rgb.delete(); ycrcb.delete(); mask.delete();
-            low.delete(); high.delete(); kernel.delete();
-            contours.delete(); hierarchy.delete();
+            // Normalisasi vektor histogram LBP
+            normalizeVector(lbpHist);
 
-            return bestRect;
+            // Gambar peta tekstur LBP ke canvas memanjang horizontal di bawah foto
+            renderLBPStrip(target, lbpMap, ROI_SIZE, ROI_SIZE);
+
+            // 4. EKSTRAKSI 7 MOMEN INVARIAN HU (Hu Moments)
+            const huMoments = computeHuMoments(gray, ROI_SIZE, ROI_SIZE);
+
+            // Perbarui label dimensi & info UI
+            document.getElementById(`roiDim${target}`).textContent = `${roi.width}×${roi.height} px`;
+
+            return {
+                roi,
+                lbpHist,
+                rgbHist,
+                huMoments
+            };
         }
 
-        // Komputasi Local Binary Pattern (LBP 3x3) + Histogram 256-bin Ternormalisasi
-        function computeLBPAndVisualize(grayMat) {
-            // Resize ROI ke ukuran tetap 128x128 agar tekstur invarian terhadap skala
-            let resized = new cv.Mat();
-            cv.resize(grayMat, resized, new cv.Size(128, 128));
+        /**
+         * Menggambar peta tekstur LBP grayscale ke canvas horizontal memanjang
+         * persis seperti visualisasi tekstur pada gambar referensi
+         */
+        function renderLBPStrip(target, lbpMap, w, h) {
+            const canvas = document.getElementById(`lbpCanvas${target}`);
+            // Gunakan aspect ratio lebar agar terlihat memanjang dan detail tekstur tampak jelas
+            canvas.width = w * 3;
+            canvas.height = Math.round(h * 0.55);
 
-            let lbpMat = new cv.Mat.zeros(128, 128, cv.CV_8UC1);
-            let hist = new Array(256).fill(0);
+            const ctx = canvas.getContext('2d');
+            
+            // Buat citra sementara ukuran 128x128 dari lbpMap dengan peningkatan kontras
+            const offCanvas = document.createElement('canvas');
+            offCanvas.width = w;
+            offCanvas.height = h;
+            const offCtx = offCanvas.getContext('2d');
+            const imgData = offCtx.createImageData(w, h);
 
-            const rows = resized.rows;
-            const cols = resized.cols;
-            const data = resized.data;
-            const outData = lbpMat.data;
+            for (let i = 0; i < w * h; i++) {
+                // Tingkatkan kontras visual tekstur LBP agar garis pola terlihat tegas
+                let val = lbpMap[i];
+                val = Math.min(255, Math.max(0, (val - 128) * 1.45 + 128));
+                const p = i * 4;
+                imgData.data[p] = val;
+                imgData.data[p + 1] = val;
+                imgData.data[p + 2] = val;
+                imgData.data[p + 3] = 255;
+            }
+            offCtx.putImageData(imgData, 0, 0);
 
-            for (let r = 1; r < rows - 1; r++) {
-                for (let c = 1; c < cols - 1; c++) {
-                    const center = data[r * cols + c];
-                    let code = 0;
-                    if (data[(r - 1) * cols + (c - 1)] >= center) code |= 128;
-                    if (data[(r - 1) * cols + c]       >= center) code |= 64;
-                    if (data[(r - 1) * cols + (c + 1)] >= center) code |= 32;
-                    if (data[r * cols + (c + 1)]       >= center) code |= 16;
-                    if (data[(r + 1) * cols + (c + 1)] >= center) code |= 8;
-                    if (data[(r + 1) * cols + c]       >= center) code |= 4;
-                    if (data[(r + 1) * cols + (c - 1)] >= center) code |= 2;
-                    if (data[r * cols + (c - 1)]       >= center) code |= 1;
+            // Gambar merentang secara horizontal ke strip canvas (mengambil pita tengah wajah yang kaya fitur mata-hidung)
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(
+                offCanvas,
+                0, Math.round(h * 0.15), w, Math.round(h * 0.70),
+                0, 0, canvas.width, canvas.height
+            );
+        }
 
-                    outData[r * cols + c] = code;
-                    hist[code]++;
+        /**
+         * Menghitung 7 Momen Invarian Hu (phi_1 s/d phi_7) dari matriks intensitas ROI
+         * beserta transformasi logaritmik: -sign(h) * log10(|h|)
+         */
+        function computeHuMoments(gray, w, h) {
+            // Hitung Momen Spasial Mentah m00, m10, m01
+            let m00 = 0, m10 = 0, m01 = 0;
+            for (let y = 0; y < h; y++) {
+                for (let x = 0; x < w; x++) {
+                    const val = gray[y * w + x] / 255.0;
+                    m00 += val;
+                    m10 += x * val;
+                    m01 += y * val;
                 }
             }
 
-            // Normalisasi L2 Histogram LBP
-            let norm = Math.sqrt(hist.reduce((acc, v) => acc + v * v, 0)) || 1;
-            const normHist = hist.map(v => v / norm);
+            if (m00 === 0) return [0, 0, 0, 0, 0, 0, 0];
 
-            resized.delete();
-            return { lbpMat, histogram: normHist };
+            const xBar = m10 / m00;
+            const yBar = m01 / m00;
+
+            // Hitung Momen Pusat (Central Moments) mu_pq hingga orde 3
+            let mu20 = 0, mu02 = 0, mu11 = 0;
+            let mu30 = 0, mu12 = 0, mu21 = 0, mu03 = 0;
+
+            for (let y = 0; y < h; y++) {
+                const dy = y - yBar;
+                const dy2 = dy * dy;
+                const dy3 = dy2 * dy;
+                for (let x = 0; x < w; x++) {
+                    const val = gray[y * w + x] / 255.0;
+                    const dx = x - xBar;
+                    const dx2 = dx * dx;
+                    const dx3 = dx2 * dx;
+
+                    mu20 += dx2 * val;
+                    mu02 += dy2 * val;
+                    mu11 += dx * dy * val;
+                    mu30 += dx3 * val;
+                    mu12 += dx * dy2 * val;
+                    mu21 += dx2 * dy * val;
+                    mu03 += dy3 * val;
+                }
+            }
+
+            // Normalisasi Skala Invarian eta_pq = mu_pq / (m00 ^ (1 + (p + q)/2))
+            const norm2 = Math.pow(m00, 2.0);
+            const norm25 = Math.pow(m00, 2.5);
+
+            const n20 = mu20 / norm2;
+            const n02 = mu02 / norm2;
+            const n11 = mu11 / norm2;
+            const n30 = mu30 / norm25;
+            const n12 = mu12 / norm25;
+            const n21 = mu21 / norm25;
+            const n03 = mu03 / norm25;
+
+            // 7 Persamaan Momen Invarian Hu (Invarian terhadap translasi, skala, dan rotasi)
+            const h1 = n20 + n02;
+            const h2 = Math.pow(n20 - n02, 2) + 4 * Math.pow(n11, 2);
+            const h3 = Math.pow(n30 - 3 * n12, 2) + Math.pow(3 * n21 - n03, 2);
+            const h4 = Math.pow(n30 + n12, 2) + Math.pow(n21 + n03, 2);
+            const h5 = (n30 - 3 * n12) * (n30 + n12) * (Math.pow(n30 + n12, 2) - 3 * Math.pow(n21 + n03, 2)) +
+                       (3 * n21 - n03) * (n21 + n03) * (3 * Math.pow(n30 + n12, 2) - Math.pow(n21 + n03, 2));
+            const h6 = (n20 - n02) * (Math.pow(n30 + n12, 2) - Math.pow(n21 + n03, 2)) +
+                       4 * n11 * (n30 + n12) * (n21 + n03);
+            const h7 = (3 * n21 - n03) * (n30 + n12) * (Math.pow(n30 + n12, 2) - 3 * Math.pow(n21 + n03, 2)) -
+                       (n30 - 3 * n12) * (n21 + n03) * (3 * Math.pow(n30 + n12, 2) - Math.pow(n21 + n03, 2));
+
+            const rawHu = [h1, h2, h3, h4, h5, h6, h7];
+
+            // Transformasi logaritmik standar untuk kompresi rentang dinamis: -sign(h) * log10(|h|)
+            return rawHu.map(val => {
+                if (Math.abs(val) < 1e-30) return 0;
+                const sign = val >= 0 ? 1 : -1;
+                return -sign * Math.log10(Math.abs(val));
+            });
         }
 
-        // ==========================================
-        // 5. PROSES PERBANDINGAN & SKOR JARAK
-        // ==========================================
-        function processComparison() {
-            if (!cvReady) {
-                showToast('Tunggu sebentar, OpenCV.js sedang dimuat...', 'warning');
+        /**
+         * Normalisasi vektor L2 agar memiliki panjang satuan
+         */
+        function normalizeVector(vec) {
+            let norm = 0;
+            for (let i = 0; i < vec.length; i++) {
+                norm += vec[i] * vec[i];
+            }
+            norm = Math.sqrt(norm);
+            if (norm > 0) {
+                for (let i = 0; i < vec.length; i++) {
+                    vec[i] /= norm;
+                }
+            }
+        }
+
+        /**
+         * Menghitung Normalized Cross-Correlation (NCC) antara dua vektor fitur A dan B
+         * Mengembalikan nilai dalam rentang [0.0000, 1.0000]
+         */
+        function computeNCC(vecA, vecB) {
+            const n = vecA.length;
+            let meanA = 0, meanB = 0;
+            for (let i = 0; i < n; i++) {
+                meanA += vecA[i];
+                meanB += vecB[i];
+            }
+            meanA /= n;
+            meanB /= n;
+
+            let num = 0, denA = 0, denB = 0;
+            for (let i = 0; i < n; i++) {
+                const diffA = vecA[i] - meanA;
+                const diffB = vecB[i] - meanB;
+                num += diffA * diffB;
+                denA += diffA * diffA;
+                denB += diffB * diffB;
+            }
+
+            const denom = Math.sqrt(denA * denB);
+            if (denom === 0) return 0;
+
+            const ncc = num / denom;
+            // Clamp ke rentang [0, 1] sesuai skala kemiripan metrik verifikasi
+            return Math.max(0, Math.min(1, ncc));
+        }
+
+        /**
+         * Menghitung kemiripan Momen Hu berbasis korelasi & jarak relatif antar vektor log-Hu
+         */
+        function computeHuSimilarity(huA, huB) {
+            // Hitung jarak Euclidean relatif dan korelasi pada 7 momen log-Hu
+            let sumSqDiff = 0;
+            let sumSqNorm = 0;
+            for (let i = 0; i < huA.length; i++) {
+                const diff = huA[i] - huB[i];
+                sumSqDiff += diff * diff;
+                sumSqNorm += (Math.abs(huA[i]) + Math.abs(huB[i])) ** 2;
+            }
+
+            if (sumSqNorm === 0) return 1.0;
+
+            // Kombinasi NCC dan kedekatan magnitudo invarian
+            const nccRaw = computeNCC(huA, huB);
+            const relDist = Math.sqrt(sumSqDiff / sumSqNorm);
+            const similarity = nccRaw * Math.exp(-1.5 * relDist);
+            return Math.max(0, Math.min(1, similarity));
+        }
+
+        /**
+         * Menjalankan proses verifikasi penuh saat tombol "Jalankan Verifikasi Wajah" diklik
+         */
+        function runFaceVerification() {
+            if (!imageState.A.img || !imageState.B.img) {
+                showMessage('Silakan unggah gambar untuk Objek A dan Objek B terlebih dahulu.', 'error');
                 return;
             }
 
-            const mode = document.querySelector('input[name="featureMode"]:checked').value;
-            const labelMap = {
-                standard: 'Citra Biner Otsu (Full)',
-                roi: 'Citra Biner Otsu (ROI Wajah)',
-                roi_lbp: 'Peta Tekstur LBP (ROI Wajah)'
-            };
-            document.getElementById('procLabelA').textContent = labelMap[mode];
-            document.getElementById('procLabelB').textContent = labelMap[mode];
+            const btn = document.getElementById('verifyBtn');
+            btn.disabled = true;
+            btn.classList.add('opacity-75');
 
-            let featA = null;
-            let featB = null;
+            // Ekstrak ulang fitur & evaluasi
+            setTimeout(() => {
+                imageState.A.features = extractAllFeatures(imageState.A.img, 'A');
+                imageState.B.features = extractAllFeatures(imageState.B.img, 'B');
+                evaluateAndRenderResults();
 
-            if (imgElementA) {
-                renderBaseImageToCanvas(imgElementA, 'canvasOrigA', 0, 1.0);
-                featA = extractFeaturesFromCanvas('canvasOrigA', 'canvasProcA', mode);
-                lastHuA = featA.hu;
-            }
-
-            if (imgElementB) {
-                const rot = parseFloat(document.getElementById('rotateSlider').value);
-                const zoom = parseFloat(document.getElementById('zoomSlider').value);
-                renderBaseImageToCanvas(imgElementB, 'canvasOrigB', rot, zoom);
-                featB = extractFeaturesFromCanvas('canvasOrigB', 'canvasProcB', mode);
-                lastHuB = featB.hu;
-            }
-
-            if (featA && featB) {
-                // Hitung Jarak Momen Hu (Manhattan / L1 Normalized Distance pada 7 Hu Moments)
-                let huDist = 0;
-                for (let i = 0; i < 7; i++) {
-                    // Bobot lebih tinggi pada H1-H4 yang paling stabil terhadap rotasi/skala diskrit
-                    const weight = i < 4 ? 1.0 : 0.35;
-                    huDist += weight * Math.abs(featA.hu[i] - featB.hu[i]);
-                }
-                huDist = huDist / 7.0;
-
-                if (mode === 'roi_lbp' && featA.lbp && featB.lbp) {
-                    // Hitung Chi-Square / Cosine Distance untuk Histogram LBP
-                    let dot = 0;
-                    for (let i = 0; i < 256; i++) {
-                        dot += featA.lbp[i] * featB.lbp[i];
-                    }
-                    const lbpDist = Math.max(0, 1 - dot); // 0 = identik, 1 = sangat berbeda
-                    // Gabungan berbobot: 45% Momen Hu + 55% Tekstur LBP
-                    lastDistance = (0.45 * huDist) + (0.55 * lbpDist);
-                } else {
-                    lastDistance = huDist;
-                }
-
-                renderHuComparisonTable(featA.hu, featB.hu);
-                updateMatchDecision();
-            }
+                btn.disabled = false;
+                btn.classList.remove('opacity-75');
+            }, 60);
         }
 
-        function updateMatchDecision() {
-            if (lastDistance === null) return;
+        /**
+         * Menghitung skor gabungan & memperbarui seluruh elemen tabel dan status hasil
+         */
+        function evaluateAndRenderResults() {
+            const featA = imageState.A.features;
+            const featB = imageState.B.features;
+            if (!featA || !featB) return;
 
             const threshold = parseFloat(document.getElementById('thresholdSlider').value);
-            const distEl = document.getElementById('distanceDisplay');
-            const badgeEl = document.getElementById('matchBadge');
 
-            distEl.textContent = lastDistance.toFixed(4);
+            // 1. Hitung Skor NCC untuk masing-masing fitur
+            const nccLBP = computeNCC(featA.lbpHist, featB.lbpHist);
+            const nccRGB = computeNCC(featA.rgbHist, featB.rgbHist);
+            const nccHu  = computeHuSimilarity(featA.huMoments, featB.huMoments);
 
-            if (lastDistance <= threshold) {
-                distEl.className = 'font-mono text-xl font-bold text-emerald-400';
-                badgeEl.textContent = 'COCOK (MATCH)';
-                badgeEl.className = 'px-4 py-2 rounded-xl text-xs font-bold bg-emerald-950 text-emerald-300 border border-emerald-600 shadow-lg shadow-emerald-950/50';
+            // 2. Hitung Skor Kemiripan Gabungan Berbobot: 50% LBP + 30% RGB + 20% Hu Moments
+            const combinedScore = (0.50 * nccLBP) + (0.30 * nccRGB) + (0.20 * nccHu);
+            const isMatch = combinedScore >= threshold;
+
+            // 3. Render angka ke Tabel Rincian
+            document.getElementById('scoreLBP').textContent = nccLBP.toFixed(4);
+            document.getElementById('scoreRGB').textContent = nccRGB.toFixed(4);
+            document.getElementById('scoreHu').textContent  = nccHu.toFixed(4);
+
+            // Format 3 nilai pertama log-Hu Moments seperti: [0.62, 2.94, 2.17, ...]
+            const formatHu = (arr) => `[${arr[0].toFixed(2)}, ${arr[1].toFixed(2)}, ${arr[2].toFixed(2)}, ...]`;
+            document.getElementById('huDescA').textContent = formatHu(featA.huMoments);
+            document.getElementById('huDescB').textContent = formatHu(featB.huMoments);
+
+            // Format Geometri ROI Terdeteksi: Luas: XXXXpx | Rasio: X.XX
+            document.getElementById('geomDescA').textContent = `Luas: ${featA.roi.areaPx}px | Rasio: ${featA.roi.ratio.toFixed(2)}`;
+            document.getElementById('geomDescB').textContent = `Luas: ${featB.roi.areaPx}px | Rasio: ${featB.roi.ratio.toFixed(2)}`;
+
+            // 4. Perbarui Header, Subheader, Warna Kartu & Pill Badge (MATCH vs NO MATCH)
+            document.getElementById('combinedScoreText').textContent = combinedScore.toFixed(4);
+            document.getElementById('activeThresholdText').textContent = threshold.toFixed(2);
+
+            const panel = document.getElementById('resultPanel');
+            const titleEl = document.getElementById('resultTitle');
+            const badgeEl = document.getElementById('statusBadge');
+
+            if (isMatch) {
+                panel.className = 'rounded-xl border-2 border-emerald-400 bg-emerald-50/45 shadow-sm p-5 sm:p-6 transition-all duration-300';
+                titleEl.className = 'text-lg sm:text-xl font-bold text-emerald-900';
+                titleEl.textContent = 'Hasil Verifikasi: COCOK (Identik)';
+                badgeEl.className = 'inline-block bg-emerald-200/80 text-emerald-900 font-extrabold text-xs tracking-wider px-3.5 py-1 rounded-full uppercase border border-emerald-300/70';
+                badgeEl.textContent = 'MATCH';
             } else {
-                distEl.className = 'font-mono text-xl font-bold text-rose-400';
-                badgeEl.textContent = 'TIDAK COCOK (NO MATCH)';
-                badgeEl.className = 'px-4 py-2 rounded-xl text-xs font-bold bg-rose-950 text-rose-300 border border-rose-600 shadow-lg shadow-rose-950/50';
+                panel.className = 'rounded-xl border-2 border-rose-400 bg-rose-50/50 shadow-sm p-5 sm:p-6 transition-all duration-300';
+                titleEl.className = 'text-lg sm:text-xl font-bold text-rose-900';
+                titleEl.textContent = 'Hasil Verifikasi: TIDAK COCOK (Berbeda)';
+                badgeEl.className = 'inline-block bg-rose-200/80 text-rose-900 font-extrabold text-xs tracking-wider px-3.5 py-1 rounded-full uppercase border border-rose-300/70';
+                badgeEl.textContent = 'NO MATCH';
             }
         }
 
-        function renderHuComparisonTable(huA, huB) {
-            const tbody = document.getElementById('huTableBody');
-            tbody.innerHTML = huA.map((valA, idx) => {
-                const valB = huB[idx];
-                const diff = Math.abs(valA - valB);
-                return `
-                    <tr class="hover:bg-slate-900/60 transition">
-                        <td class="p-2.5 font-semibold text-indigo-300">H${idx + 1}</td>
-                        <td class="p-2.5 text-slate-300">${valA.toFixed(4)}</td>
-                        <td class="p-2.5 text-slate-300">${valB.toFixed(4)}</td>
-                        <td class="p-2.5 text-right ${diff < 0.2 ? 'text-emerald-400' : 'text-amber-400'}">${diff.toFixed(4)}</td>
-                    </tr>
-                `;
-            }).join('');
-        }
+        // Inisialisasi saat halaman dimuat
+        window.onload = function() {
+            loadDefaultSamples();
+        };
 
-        // ==========================================
-        // 6. PENCATAT TABEL LAPORAN PRAKTIKUM
-        // ==========================================
-        function recordScenarioResult() {
-            if (lastDistance === null) {
-                showToast('Unggah Foto A dan Foto B terlebih dahulu!', 'warning');
-                return;
-            }
-
-            const scenario = document.getElementById('scenarioSelect').value;
-            const note = document.getElementById('scenarioNote').value.trim();
-            const modeVal = document.querySelector('input[name="featureMode"]:checked').value;
-            const threshold = parseFloat(document.getElementById('thresholdSlider').value).toFixed(2);
-            const isMatch = lastDistance <= parseFloat(threshold);
-
-            const modeLabels = {
-                standard: 'Hu Standar',
-                roi: 'ROI + Hu',
-                roi_lbp: 'ROI + Hu + LBP'
-            };
-
-            reportRecords.push({
-                id: Date.now(),
-                scenario: note ? `${scenario} (${note})` : scenario,
-                method: modeLabels[modeVal],
-                distance: lastDistance.toFixed(4),
-                threshold: threshold,
-                status: isMatch ? 'COCOK' : 'TIDAK COCOK'
-            });
-
-            document.getElementById('scenarioNote').value = '';
-            renderReportTable();
-            showToast('Hasil pengujian berhasil dicatat ke tabel laporan!', 'success');
-        }
-
-        function renderReportTable() {
-            const tbody = document.getElementById('reportTableBody');
-            if (reportRecords.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="6" class="p-4 text-center text-slate-500">Belum ada data pengujian yang dicatat.</td></tr>`;
-                return;
-            }
-
-            tbody.innerHTML = reportRecords.map(rec => `
-                <tr class="hover:bg-slate-900/60 transition">
-                    <td class="p-2.5 text-white font-medium">${escapeHtml(rec.scenario)}</td>
-                    <td class="p-2.5 text-indigo-300">${escapeHtml(rec.method)}</td>
-                    <td class="p-2.5 font-mono text-slate-200">${rec.distance}</td>
-                    <td class="p-2.5 font-mono text-amber-400">${rec.threshold}</td>
-                    <td class="p-2.5">
-                        <span class="px-2 py-0.5 rounded text-[10px] font-bold ${rec.status === 'COCOK' ? 'bg-emerald-950 text-emerald-400 border border-emerald-800' : 'bg-rose-950 text-rose-400 border border-rose-800'}">
-                            ${rec.status}
-                        </span>
-                    </td>
-                    <td class="p-2.5 text-right">
-                        <button onclick="deleteReportRow(${rec.id})" class="text-rose-400 hover:text-rose-300">
-                            <i class="fa-solid fa-trash-can"></i>
-                        </button>
-                    </td>
-                </tr>
-            `).join('');
-        }
-
-        function deleteReportRow(id) {
-            reportRecords = reportRecords.filter(r => r.id !== id);
-            renderReportTable();
-        }
-
-        function copyReportTable() {
-            if (reportRecords.length === 0) {
-                showToast('Tabel laporan masih kosong!', 'warning');
-                return;
-            }
-
-            let text = "No\tSkenario Pengujian\tMetode Ekstraksi\tJarak (Distance)\tThreshold\tHasil Pencocokan\n";
-            reportRecords.forEach((r, idx) => {
-                text += `${idx + 1}\t${r.scenario}\t${r.method}\t${r.distance}\t${r.threshold}\t${r.status}\n`;
-            });
-
-            const textarea = document.createElement('textarea');
-            textarea.value = text;
-            document.body.appendChild(textarea);
-            textarea.select();
-            document.execCommand('copy');
-            document.body.removeChild(textarea);
-
-            showToast('Tabel laporan disalin! Siap di-paste ke Word / Google Docs.', 'success');
-        }
-
-        function exportReportCSV() {
-            if (reportRecords.length === 0) {
-                showToast('Tabel laporan masih kosong!', 'warning');
-                return;
-            }
-
-            let csv = "data:text/csv;charset=utf-8,No,Skenario Pengujian,Metode Ekstraksi,Jarak (Distance),Threshold,Hasil Pencocokan\n";
-            reportRecords.forEach((r, idx) => {
-                csv += `${idx + 1},"${r.scenario}","${r.method}",${r.distance},${r.threshold},"${r.status}"\n`;
-            });
-
-            const encodedUri = encodeURI(csv);
-            const link = document.createElement('a');
-            link.setAttribute('href', encodedUri);
-            link.setAttribute('download', 'Laporan_IP241_CV_P9_HuMoments.csv');
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            showToast('File CSV laporan berhasil diunduh!', 'success');
-        }
-
-        // ==========================================
-        // 7. HELPERS
-        // ==========================================
-        function showToast(message, type = 'info') {
-            const container = document.getElementById('toastContainer');
-            const toast = document.createElement('div');
-            const styles = {
-                success: 'bg-emerald-900/90 border-emerald-600 text-emerald-200',
-                warning: 'bg-amber-900/90 border-amber-600 text-amber-200',
-                error: 'bg-rose-900/90 border-rose-600 text-rose-200',
-                info: 'bg-slate-800/90 border-slate-600 text-slate-200'
-            };
-
-            toast.className = `pointer-events-auto px-4 py-3 rounded-xl border backdrop-blur shadow-xl text-xs font-medium transition-all duration-300 ${styles[type] || styles.info}`;
-            toast.textContent = message;
-            container.appendChild(toast);
-
-            setTimeout(() => {
-                toast.classList.add('opacity-0');
-                setTimeout(() => toast.remove(), 300);
-            }, 3000);
-        }
-
-        function escapeHtml(str) {
-            return String(str).replace(/[&<>"']/g, m => ({
-                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-            })[m]);
-        }
+        // Sesuaikan ulang overlay ROI saat ukuran layar berubah
+        window.addEventListener('resize', () => {
+            if (imageState.A.features) drawROIOverlay('A', imageState.A.features.roi.normBox);
+            if (imageState.B.features) drawROIOverlay('B', imageState.B.features.roi.normBox);
+        });
     </script>
 </body>
 </html>
